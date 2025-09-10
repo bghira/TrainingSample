@@ -166,16 +166,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
 
-    - name: Install FFmpeg dependencies (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        brew install ffmpeg pkg-config
-        echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
 
-    - name: Install FFmpeg dependencies (Windows)
-      if: runner.os == 'Windows'
-      run: |
-        choco install ffmpeg
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -193,12 +184,16 @@ jobs:
       if: runner.os == 'Windows'
       run: pip install maturin
 
-    - name: Build wheels (Linux/Windows)
-      if: runner.os != 'macOS'
+    - name: Build wheels (Linux)
+      if: runner.os == 'Linux'
       run: maturin build --release --out dist
 
     - name: Build wheels (macOS - no video features)
       if: runner.os == 'macOS'
+      run: maturin build --release --out dist --no-default-features --features python-bindings
+
+    - name: Build wheels (Windows - no video features)
+      if: runner.os == 'Windows'
       run: maturin build --release --out dist --no-default-features --features python-bindings
 
     - name: Upload wheels
