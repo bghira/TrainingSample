@@ -17,6 +17,11 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Install FFmpeg dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
@@ -49,7 +54,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter
+        args: --release --out dist --find-interpreter --no-default-features --features python-bindings
         sccache: 'true'
       env:
         # Use stable ABI for forward compatibility
@@ -75,7 +80,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter
+        args: --release --out dist --find-interpreter --no-default-features --features python-bindings
         sccache: 'true'
       env:
         # Use stable ABI for forward compatibility
