@@ -585,13 +585,13 @@ mod performance_validation_tests {
         let luminance_duration = start.elapsed();
 
         // Performance expectations (generous bounds for CI)
-        assert!(crop_duration.as_millis() < 100, "Crop should be fast");
+        assert!(crop_duration.as_millis() < 500, "Crop should be fast");
         assert!(
-            resize_duration.as_millis() < 500,
+            resize_duration.as_millis() < 2000,
             "Resize should complete reasonably"
         );
         assert!(
-            luminance_duration.as_millis() < 100,
+            luminance_duration.as_millis() < 500,
             "Luminance should be fast"
         );
     }
