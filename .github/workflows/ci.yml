@@ -84,16 +84,34 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Install maturin
+    - name: Install maturin (Linux/macOS)
+      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
 
-    - name: Build Python package
+    - name: Install maturin (Windows)
+      if: runner.os == 'Windows'
+      run: pip install maturin
+
+    - name: Build Python package (Linux/macOS)
+      if: runner.os != 'Windows'
       run: |
         mkdir -p dist
         maturin build --release --out dist
 
-    - name: Install built package
+    - name: Build Python package (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        if not exist dist mkdir dist
+        maturin build --release --out dist
+
+    - name: Install built package (Linux/macOS)
+      if: runner.os != 'Windows'
       run: pip install dist/*.whl
+
+    - name: Install built package (Windows)
+      if: runner.os == 'Windows'
+      shell: cmd
+      run: for %%f in (dist\*.whl) do pip install "%%f"
 
     - name: Install test dependencies
       run: pip install pytest pytest-benchmark numpy pillow
@@ -166,8 +184,13 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@stable
 
-    - name: Install maturin
+    - name: Install maturin (Linux/macOS)
+      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
+
+    - name: Install maturin (Windows)
+      if: runner.os == 'Windows'
+      run: pip install maturin
 
     - name: Build wheels
       run: maturin build --release --out dist
