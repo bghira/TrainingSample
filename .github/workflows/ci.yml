@@ -169,7 +169,12 @@ jobs:
     - name: Install FFmpeg dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
-        brew install ffmpeg
+        brew install ffmpeg pkg-config llvm
+        echo "PKG_CONFIG_PATH=$(brew --prefix)/lib/pkgconfig" >> $GITHUB_ENV
+        echo "CPPFLAGS=-I$(brew --prefix)/include" >> $GITHUB_ENV
+        echo "LDFLAGS=-L$(brew --prefix)/lib" >> $GITHUB_ENV
+        echo "BINDGEN_EXTRA_CLANG_ARGS=-I$(brew --prefix)/include" >> $GITHUB_ENV
+        echo "LIBCLANG_PATH=$(brew --prefix llvm)/lib" >> $GITHUB_ENV
 
     - name: Install FFmpeg dependencies (Windows)
       if: runner.os == 'Windows'
