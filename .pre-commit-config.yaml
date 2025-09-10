@@ -1,0 +1,92 @@
+repos:
+  # Rust formatting and linting
+  - repo: https://github.com/doublify/pre-commit-rust
+    rev: v1.0
+    hooks:
+      - id: fmt
+        name: Rust format
+        description: Format Rust code with rustfmt
+        entry: cargo fmt
+        language: system
+        files: \.rs$
+        pass_filenames: false
+      - id: cargo-check
+        name: Rust check
+        description: Check Rust code with cargo check
+        entry: cargo check --all-targets --all-features
+        language: system
+        files: \.rs$
+        pass_filenames: false
+      - id: clippy
+        name: Rust clippy
+        description: Lint Rust code with clippy
+        entry: cargo clippy --all-targets --all-features -- -D warnings
+        language: system
+        files: \.rs$
+        pass_filenames: false
+
+  # Python formatting and linting
+  - repo: https://github.com/psf/black
+    rev: 25.1.0
+    hooks:
+      - id: black
+        language_version: python3
+        files: \.py$
+
+  - repo: https://github.com/pycqa/isort
+    rev: 6.0.1
+    hooks:
+      - id: isort
+        args: ["--profile", "black"]
+        files: \.py$
+
+  - repo: https://github.com/pycqa/flake8
+    rev: 7.3.0
+    hooks:
+      - id: flake8
+        args: [--max-line-length=88, --extend-ignore=E203,W503]
+        files: \.py$
+
+  # TOML formatting
+  - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
+    rev: v2.15.0
+    hooks:
+      - id: pretty-format-toml
+        args: [--autofix]
+
+  # General hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: check-added-large-files
+        args: ['--maxkb=1000']
+
+  # Rust tests
+  - repo: local
+    hooks:
+      - id: rust-test
+        name: Rust tests
+        description: Run Rust tests
+        entry: cargo test --features video
+        language: system
+        files: \.rs$
+        pass_filenames: false
+        stages: [pre-commit]
+
+  # Python tests (when bindings are built)
+  - repo: local
+    hooks:
+      - id: python-test
+        name: Python tests
+        description: Run Python tests
+        entry: bash -c 'if [ -d "target/wheels" ] || python -c "import trainingsample" 2>/dev/null; then pytest tests/ -v; else echo "Python bindings not built, skipping Python tests"; fi'
+        language: system
+        files: \.(py|rs)$
+        pass_filenames: false
+        stages: [pre-commit]
+
