@@ -32,19 +32,19 @@ jobs:
         components: rustfmt, clippy
 
     - name: Cache cargo registry
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/registry
         key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo index
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: ~/.cargo/git
         key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
 
     - name: Cache cargo target
-      uses: actions/cache@v3
+      uses: actions/cache@v4
       with:
         path: target
         key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
@@ -66,7 +66,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.8, 3.9, "3.10", "3.11", "3.12"]
+        python-version: [3.9, "3.10", "3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v4
@@ -88,7 +88,12 @@ jobs:
       run: pip install maturin[patchelf]
 
     - name: Build Python package
-      run: maturin develop --release
+      run: |
+        mkdir -p dist
+        maturin build --release --out dist
+
+    - name: Install built package
+      run: pip install dist/*.whl
 
     - name: Install test dependencies
       run: pip install pytest pytest-benchmark numpy pillow
@@ -168,7 +173,7 @@ jobs:
       run: maturin build --release --out dist
 
     - name: Upload wheels
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: wheels-${{ matrix.os }}
         path: dist/
