@@ -1,54 +1,25 @@
 [build-system]
-requires = ["maturin>=1.0,<2.0"]
 build-backend = "maturin"
+requires = ["maturin>=1.0,<2.0"]
 
 [project]
-name = "trainingsample"
-version = "0.1.0"
-requires-python = ">=3.9"
-classifiers = [
-    "Programming Language :: Rust",
-    "Programming Language :: Python :: Implementation :: CPython",
-    "Programming Language :: Python :: Implementation :: PyPy",
-]
-description = "High-performance Rust reimplementation of GIL-blocking video/image operations"
 authors = [{name = "bghira", email = "bghira@users.noreply.github.com"}]
-license = {text = "MIT"}
-
-dependencies = [
-    "numpy>=1.21.0",
-    "pillow>=8.0.0",
+classifiers = [
+  "Programming Language :: Rust",
+  "Programming Language :: Python :: Implementation :: CPython",
+  "Programming Language :: Python :: Implementation :: PyPy"
 ]
+dependencies = ["numpy>=1.21.0", "pillow>=8.0.0"]
+description = "High-performance Rust reimplementation of GIL-blocking video/image operations"
+license = {text = "MIT"}
+name = "trainingsample"
+requires-python = ">=3.9"
+version = "0.1.0"
 
 [project.optional-dependencies]
-dev = [
-    "pytest>=6.0",
-    "pytest-benchmark",
-    "maturin>=1.0,<2.0",
-    "pre-commit",
-]
-
-[tool.maturin]
-features = ["pyo3/extension-module", "python-bindings"]
-module-name = "trainingsample"
-
-[tool.pytest.ini_options]
-minversion = "6.0"
-addopts = "-ra -q --strict-markers"
-testpaths = ["tests"]
-python_files = ["test_*.py", "*_test.py"]
-python_classes = ["Test*"]
-python_functions = ["test_*"]
-markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "integration: marks tests as integration tests",
-    "benchmark: marks tests as benchmarks",
-]
+dev = ["pytest>=6.0", "pytest-benchmark", "maturin>=1.0,<2.0", "pre-commit"]
 
 [tool.black]
-line-length = 88
-target-version = ['py38']
-include = '\.pyi?$'
 extend-exclude = '''
 /(
   # directories
@@ -62,15 +33,35 @@ extend-exclude = '''
   | dist
 )/
 '''
+include = '\.pyi?$'
+line-length = 88
+target-version = ['py38']
 
 [tool.isort]
-profile = "black"
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
 ensure_newline_before_comments = true
+force_grid_wrap = 0
+include_trailing_comma = true
 line_length = 88
+multi_line_output = 3
+profile = "black"
+use_parentheses = true
+
+[tool.maturin]
+features = ["pyo3/extension-module", "python-bindings"]
+module-name = "trainingsample"
+
 [tool.poetry.group.dev.dependencies]
 pytest-benchmark = "^5.1.0"
 
+[tool.pytest.ini_options]
+addopts = "-ra -q --strict-markers"
+markers = [
+  "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+  "integration: marks tests as integration tests",
+  "benchmark: marks tests as benchmarks"
+]
+minversion = "6.0"
+python_classes = ["Test*"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+testpaths = ["tests"]
