@@ -14,8 +14,10 @@ use std::arch::x86_64::*;
 /// - AVX-512: 16x speedup over scalar
 /// - AVX2 + FMA: 8x speedup over scalar
 /// - AVX2: 6x speedup over scalar
+///
 /// Calculate luminance using the best available x86 instruction set
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[allow(clippy::incompatible_msrv, clippy::let_and_return)]
 pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {
     // Runtime CPU feature detection
     if is_x86_feature_detected!("avx512f") {
@@ -99,8 +101,7 @@ unsafe fn calculate_luminance_avx512(image: &ArrayView3<u8>) -> f64 {
     }
 
     // Horizontal sum of all 16 lanes
-    let result = horizontal_sum_avx512(total) as f64 / pixel_count;
-    result
+    horizontal_sum_avx512(total) as f64 / pixel_count
 }
 
 /// AVX2 + FMA luminance calculation - processes 8 pixels simultaneously
@@ -164,8 +165,7 @@ unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> f64 {
         }
     }
 
-    let result = horizontal_sum_avx2(total) as f64 / pixel_count;
-    result
+    horizontal_sum_avx2(total) as f64 / pixel_count
 }
 
 /// AVX2 luminance calculation - processes 8 pixels simultaneously
@@ -231,8 +231,7 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> f64 {
         }
     }
 
-    let result = horizontal_sum_avx2(total) as f64 / pixel_count;
-    result
+    horizontal_sum_avx2(total) as f64 / pixel_count
 }
 
 /// SSE4.1 luminance calculation - processes 4 pixels simultaneously
@@ -297,8 +296,7 @@ unsafe fn calculate_luminance_sse41(image: &ArrayView3<u8>) -> f64 {
         }
     }
 
-    let result = horizontal_sum_sse(total) as f64 / pixel_count;
-    result
+    horizontal_sum_sse(total) as f64 / pixel_count
 }
 
 /// Scalar fallback luminance calculation
@@ -330,8 +328,7 @@ fn calculate_luminance_scalar(image: &ArrayView3<u8>) -> f64 {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
 unsafe fn horizontal_sum_avx512(v: __m512) -> f32 {
-    let sum1 = _mm512_reduce_add_ps(v);
-    sum1
+    _mm512_reduce_add_ps(v)
 }
 
 /// Horizontal sum for AVX2 registers

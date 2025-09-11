@@ -100,7 +100,7 @@ mod x86_optimization_tests {
                 desc
             );
             assert!(
-                sum < (width * height * 3 * 255) as u32,
+                sum < (width * height * 3 * 255),
                 "Resized image should not be all max values for {}",
                 desc
             );
@@ -178,7 +178,7 @@ mod x86_optimization_tests {
                 for c in 0..3 {
                     let x86_val = x86_resized[[h, w, c]] as i16;
                     let simd_val = simd_resized[[h, w, c]] as i16;
-                    total_diff += (x86_val - simd_val).abs() as u64;
+                    total_diff += (x86_val - simd_val).unsigned_abs() as u64;
                     pixel_count += 1;
                 }
             }

@@ -17,7 +17,14 @@ use std::arch::x86_64::*;
 /// - EPYC 7xxx: 10-16x speedup over scalar
 /// - Threadripper: 8-16x speedup over scalar
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[allow(
+    dead_code,
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    clippy::incompatible_msrv
+)]
 pub struct X86ResizeEngine {
+    #[allow(dead_code)]
     thread_pool: rayon::ThreadPool,
     cores_used: AtomicUsize,
     cpu_features: CpuFeatures,

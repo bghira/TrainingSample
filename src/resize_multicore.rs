@@ -224,6 +224,7 @@ fn process_block_with_neon(
 }
 
 #[cfg(not(all(feature = "simd", target_arch = "aarch64")))]
+#[allow(clippy::too_many_arguments)]
 fn process_block_with_neon(
     image: &ArrayView3<u8>,
     block: &mut ndarray::ArrayViewMut3<u8>,
