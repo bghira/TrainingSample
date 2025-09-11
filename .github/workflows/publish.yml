@@ -26,7 +26,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --zig
+        args: --release --out dist --find-interpreter --zig --no-default-features --features python-bindings,simd
         sccache: 'true'
         manylinux: auto
       env:
@@ -54,7 +54,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings
+        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd
         sccache: 'true'
       env:
         # Use stable ABI for forward compatibility
@@ -80,7 +80,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings
+        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,metal
         sccache: 'true'
       env:
         # Use stable ABI for forward compatibility

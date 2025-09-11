@@ -5,6 +5,25 @@ mod loading;
 mod luminance;
 mod resize;
 
+// SIMD optimizations - only when feature is enabled
+#[cfg(feature = "simd")]
+mod luminance_simd;
+
+#[cfg(feature = "simd")]
+mod resize_simd;
+
+#[cfg(feature = "simd")]
+mod resize_neon_optimized;
+
+#[cfg(feature = "simd")]
+mod resize_multicore;
+
+#[cfg(feature = "metal")]
+mod resize_metal;
+
+#[cfg(feature = "simd")]
+mod format_conversion_simd;
+
 // Python bindings - only when feature is enabled
 #[cfg(feature = "python-bindings")]
 mod python_bindings;

@@ -14,7 +14,7 @@ try:
 except ImportError:
     HAS_BINDINGS = False
 
-HAS_BENCHMARK = False
+HAS_BENCHMARK = True
 
 pytestmark = pytest.mark.skipif(
     not HAS_BINDINGS, reason="Python bindings not available"
