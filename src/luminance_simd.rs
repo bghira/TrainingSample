@@ -525,6 +525,41 @@ pub fn calculate_luminance_optimized(image: &ArrayView3<u8>) -> (f64, LuminanceM
     optimal_impl(image)
 }
 
+/// Sequential (single-threaded) luminance calculation to avoid nested parallelism
+pub fn calculate_luminance_optimized_sequential(image: &ArrayView3<u8>) -> (f64, LuminanceMetrics) {
+    // Always use single-threaded SIMD implementations, avoiding any parallel variants
+    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+    {
+        if is_x86_feature_detected!("avx2") {
+            if is_x86_feature_detected!("fma") {
+                return safe_calculate_luminance_avx2_fma(image);
+            } else {
+                return safe_calculate_luminance_avx2(image);
+            }
+        } else if is_x86_feature_detected!("sse4.1") {
+            return safe_calculate_luminance_sse41(image);
+        }
+    }
+
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    {
+        if std::arch::is_aarch64_feature_detected!("neon") {
+            return safe_calculate_luminance_neon(image);
+        }
+    }
+
+    // Fallback implementations
+    #[cfg(feature = "simd")]
+    {
+        calculate_luminance_portable_simd(image)
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        calculate_luminance_scalar_tracked(image)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

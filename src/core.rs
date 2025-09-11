@@ -82,9 +82,13 @@ pub fn batch_resize_image_arrays(
 }
 
 pub fn batch_calculate_luminance_arrays(images: &[Array3<u8>]) -> Vec<f64> {
+    use crate::luminance::calculate_luminance_array_sequential;
+
+    // Use parallel batch processing with sequential individual processing
+    // to avoid nested parallelism that causes performance degradation
     images
         .par_iter()
-        .map(|img| calculate_luminance_array(&img.view()))
+        .map(|img| calculate_luminance_array_sequential(&img.view()))
         .collect()
 }
 

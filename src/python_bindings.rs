@@ -179,13 +179,16 @@ pub fn batch_resize_images<'py>(
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
 pub fn batch_calculate_luminance(images: Vec<PyReadonlyArray3<u8>>) -> PyResult<Vec<f64>> {
-    use rayon::prelude::*;
+    use crate::luminance::calculate_luminance_array_sequential;
 
     let image_views: Vec<_> = images.iter().map(|arr| arr.as_array()).collect();
 
+    // Use parallel batch processing with sequential individual processing
+    // to avoid nested parallelism that causes performance degradation
+    use rayon::prelude::*;
     let results: Vec<_> = image_views
         .par_iter()
-        .map(calculate_luminance_array)
+        .map(calculate_luminance_array_sequential)
         .collect();
 
     Ok(results)

@@ -1,13 +1,30 @@
 use ndarray::ArrayView3;
 
 #[cfg(feature = "simd")]
-pub use crate::luminance_simd::{calculate_luminance_optimized, LuminanceMetrics};
+pub use crate::luminance_simd::{
+    calculate_luminance_optimized, calculate_luminance_optimized_sequential, LuminanceMetrics,
+};
 
 /// Main luminance calculation function with automatic SIMD optimization
 pub fn calculate_luminance_array(image: &ArrayView3<u8>) -> f64 {
     #[cfg(feature = "simd")]
     {
         let (result, _metrics) = calculate_luminance_optimized(image);
+        result
+    }
+
+    #[cfg(not(feature = "simd"))]
+    {
+        calculate_luminance_scalar(image)
+    }
+}
+
+/// Single-threaded luminance calculation to avoid nested parallelism in batch operations
+pub fn calculate_luminance_array_sequential(image: &ArrayView3<u8>) -> f64 {
+    #[cfg(feature = "simd")]
+    {
+        // Use single-threaded SIMD optimization to avoid nested parallelism
+        let (result, _metrics) = calculate_luminance_optimized_sequential(image);
         result
     }
 
