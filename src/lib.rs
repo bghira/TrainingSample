@@ -120,5 +120,11 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
 
+    // Ultra-optimized implementation targeting OpenCV performance parity
+    m.add_function(wrap_pyfunction!(
+        crate::python_bindings::resize_lanczos3_ultra_optimized,
+        m
+    )?)?;
+
     Ok(())
 }

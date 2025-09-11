@@ -704,3 +704,51 @@ pub fn resize_lanczos3_portable_wide<'py>(
         "SIMD optimizations are not available in this build",
     ))
 }
+
+/// Ultra-optimized Lanczos3 resize with zero-copy operations and extreme vectorization
+/// Targets OpenCV performance parity through aggressive memory access optimization
+#[cfg(all(feature = "python-bindings", feature = "simd"))]
+#[pyfunction]
+pub fn resize_lanczos3_ultra_optimized<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    let array = image.as_array();
+    let start = std::time::Instant::now();
+    
+    match crate::resize_optimized::resize_lanczos3_ultra_optimized(&array, target_width, target_height) {
+        Ok((result, metrics)) => {
+            let elapsed = start.elapsed();
+            eprintln!(
+                "🚀 Ultra-optimized resize: {}x{} → {}x{} in {:.1}ms ({:.1} MPx/s, {})",
+                array.dim().1, array.dim().0,
+                target_width, target_height,
+                elapsed.as_secs_f64() * 1000.0,
+                metrics.throughput_mpixels_per_sec,
+                metrics.implementation
+            );
+            
+            // Convert result to numpy array
+            let result_array = PyArray3::from_array_bound(py, &result.view());
+            Ok(result_array)
+        },
+        Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Ultra-optimized resize failed: {}", e
+        ))),
+    }
+}
+
+#[cfg(all(feature = "python-bindings", not(feature = "simd")))]
+#[pyfunction]
+pub fn resize_lanczos3_ultra_optimized<'py>(
+    _py: Python<'py>,
+    _image: PyReadonlyArray3<u8>,
+    _target_width: u32,
+    _target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyNotImplementedError::new_err(
+        "Ultra-optimized resize requires SIMD features",
+    ))
+}

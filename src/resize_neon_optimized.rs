@@ -329,7 +329,7 @@ fn lanczos3_kernel(x: f32) -> f32 {
     }
 }
 
-/// Auto-detecting NEON Lanczos3 implementation  
+/// Auto-detecting NEON Lanczos3 implementation
 #[cfg(all(feature = "simd", target_arch = "aarch64"))]
 pub fn resize_lanczos3_neon_optimized_safe(
     image: &ArrayView3<u8>,

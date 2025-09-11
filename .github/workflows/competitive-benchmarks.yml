@@ -72,20 +72,20 @@ jobs:
           const fs = require('fs');
           try {
             const benchmarkData = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
-            
+
             let comment = '## 🚀 Competitive Benchmark Results\n\n';
             comment += '| Test | Performance | Target | Status |\n';
             comment += '|------|------------|--------|--------|\n';
-            
+
             // Parse benchmark results and format for comment
             for (const benchmark of benchmarkData.benchmarks || []) {
               const name = benchmark.name;
               const ops = benchmark.stats?.ops || 'N/A';
               comment += `| ${name} | ${ops} ops/sec | See test | ⚡ |\n`;
             }
-            
+
             comment += '\n*Competitive benchmarks compare against OpenCV and NumPy for real-world SFT workloads (5120x5120 images)*';
-            
+
             github.rest.issues.createComment({
               issue_number: context.issue.number,
               owner: context.repo.owner,
@@ -100,7 +100,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
     needs: competitive-benchmarks
-    
+
     steps:
     - name: Track performance over time
       run: |

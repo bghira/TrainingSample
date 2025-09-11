@@ -496,7 +496,7 @@ impl X86ResizeEngine {
         Ok(result)
     }
 
-    /// High-performance AVX2 + FMA Lanczos3 implementation  
+    /// High-performance AVX2 + FMA Lanczos3 implementation
     #[target_feature(enable = "avx2,fma")]
     unsafe fn resize_lanczos3_avx2_fma(
         &self,
