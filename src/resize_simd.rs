@@ -6,6 +6,7 @@ use rayon::prelude::*;
 use wide::f32x8;
 
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[allow(unused_imports)]
 use std::arch::x86_64::*;
 
 #[cfg(all(feature = "simd", target_arch = "aarch64"))]

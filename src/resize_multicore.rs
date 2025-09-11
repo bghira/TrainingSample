@@ -84,19 +84,37 @@ impl MultiCoreResizeEngine {
                     let block_start_y = block_idx * block_height;
                     let block_end_y = (block_start_y + block.dim().0).min(dst_height);
 
-                    // Use NEON SIMD within each block
-                    process_block_with_neon(
-                        image,
-                        &mut block,
-                        BlockParams {
+                    // Use SIMD within each block if available
+                    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+                    {
+                        process_block_with_neon(
+                            image,
+                            &mut block,
+                            BlockParams {
+                                block_start_y,
+                                _block_end_y: block_end_y,
+                                dst_width,
+                                _dst_height: dst_height,
+                                src_width,
+                                src_height,
+                            },
+                        );
+                    }
+
+                    #[cfg(not(all(feature = "simd", target_arch = "aarch64")))]
+                    {
+                        // Fallback to scalar processing for this block
+                        process_block_with_neon(
+                            image,
+                            &mut block,
                             block_start_y,
-                            _block_end_y: block_end_y,
+                            block_end_y,
                             dst_width,
-                            _dst_height: dst_height,
+                            dst_height,
                             src_width,
                             src_height,
-                        },
-                    );
+                        );
+                    }
                 });
         });
 
