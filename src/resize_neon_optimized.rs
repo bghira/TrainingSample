@@ -193,6 +193,158 @@ unsafe fn process_neon_block(
     }
 }
 
+/// High-performance Lanczos3 implementation for Apple Silicon
+#[cfg(all(feature = "simd", target_arch = "aarch64"))]
+#[target_feature(enable = "neon")]
+unsafe fn resize_lanczos3_neon_advanced(
+    image: &ArrayView3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> Result<Array3<u8>> {
+    let (src_height, src_width, channels) = image.dim();
+
+    if channels != 3 {
+        return Err(anyhow::anyhow!(
+            "Only RGB images (3 channels) are supported"
+        ));
+    }
+
+    let dst_width = target_width as usize;
+    let dst_height = target_height as usize;
+
+    // Use separable filtering for better performance
+    // Horizontal pass first
+    let mut temp = Array3::<f32>::zeros((src_height, dst_width, 3));
+
+    let x_scale = src_width as f32 / dst_width as f32;
+    let y_scale = src_height as f32 / dst_height as f32;
+
+    // NEON constants
+    let zero_f32 = vdupq_n_f32(0.0);
+    let vec_255 = vdupq_n_f32(255.0);
+
+    // Horizontal pass with NEON-optimized Lanczos3
+    for y in 0..src_height {
+        for dst_x in 0..dst_width {
+            let center = (dst_x as f32 + 0.5) * x_scale - 0.5;
+            let left = (center - 3.0).ceil() as i32;
+            let right = (center + 3.0).floor() as i32;
+
+            // Process 4 color components at a time using NEON
+            let mut sum_vec = vdupq_n_f32(0.0);
+            let mut weight_sum = 0.0f32;
+
+            for src_x in left..=right {
+                if src_x >= 0 && (src_x as usize) < src_width {
+                    let distance = (src_x as f32 - center) / 1.0; // No scaling for downsampling
+                    let weight = lanczos3_kernel(distance);
+
+                    if weight.abs() > 1e-6 {
+                        weight_sum += weight;
+
+                        // Load RGB values and multiply by weight
+                        let pixel_r = *image.uget((y, src_x as usize, 0)) as f32 * weight;
+                        let pixel_g = *image.uget((y, src_x as usize, 1)) as f32 * weight;
+                        let pixel_b = *image.uget((y, src_x as usize, 2)) as f32 * weight;
+
+                        let pixel_vec = vld1q_f32([pixel_r, pixel_g, pixel_b, 0.0].as_ptr());
+                        sum_vec = vaddq_f32(sum_vec, pixel_vec);
+                    }
+                }
+            }
+
+            // Normalize and store
+            if weight_sum > 0.0 {
+                let norm_vec = vdivq_f32(sum_vec, vdupq_n_f32(weight_sum));
+                let clamped = vmaxq_f32(zero_f32, vminq_f32(vec_255, norm_vec));
+
+                let result: [f32; 4] = std::mem::transmute(clamped);
+                temp[[y, dst_x, 0]] = result[0];
+                temp[[y, dst_x, 1]] = result[1];
+                temp[[y, dst_x, 2]] = result[2];
+            }
+        }
+    }
+
+    // Vertical pass with NEON
+    let mut result = Array3::<u8>::zeros((dst_height, dst_width, 3));
+
+    for dst_y in 0..dst_height {
+        let center = (dst_y as f32 + 0.5) * y_scale - 0.5;
+        let top = (center - 3.0).ceil() as i32;
+        let bottom = (center + 3.0).floor() as i32;
+
+        for dst_x in 0..dst_width {
+            let mut sum_vec = vdupq_n_f32(0.0);
+            let mut weight_sum = 0.0f32;
+
+            for src_y in top..=bottom {
+                if src_y >= 0 && (src_y as usize) < src_height {
+                    let distance = (src_y as f32 - center) / 1.0;
+                    let weight = lanczos3_kernel(distance);
+
+                    if weight.abs() > 1e-6 {
+                        weight_sum += weight;
+
+                        let pixel_r = temp[[src_y as usize, dst_x, 0]] * weight;
+                        let pixel_g = temp[[src_y as usize, dst_x, 1]] * weight;
+                        let pixel_b = temp[[src_y as usize, dst_x, 2]] * weight;
+
+                        let pixel_vec = vld1q_f32([pixel_r, pixel_g, pixel_b, 0.0].as_ptr());
+                        sum_vec = vaddq_f32(sum_vec, pixel_vec);
+                    }
+                }
+            }
+
+            // Final result
+            if weight_sum > 0.0 {
+                let norm_vec = vdivq_f32(sum_vec, vdupq_n_f32(weight_sum));
+                let clamped = vmaxq_f32(zero_f32, vminq_f32(vec_255, norm_vec));
+                let rounded = vaddq_f32(clamped, vdupq_n_f32(0.5));
+                let final_vec = vcvtq_u32_f32(rounded);
+
+                let result_vals: [u32; 4] = std::mem::transmute(final_vec);
+                *result.uget_mut((dst_y, dst_x, 0)) = result_vals[0] as u8;
+                *result.uget_mut((dst_y, dst_x, 1)) = result_vals[1] as u8;
+                *result.uget_mut((dst_y, dst_x, 2)) = result_vals[2] as u8;
+            }
+        }
+    }
+
+    Ok(result)
+}
+
+// Lanczos3 kernel function optimized for NEON
+#[cfg(all(feature = "simd", target_arch = "aarch64"))]
+fn lanczos3_kernel(x: f32) -> f32 {
+    let x = x.abs();
+    if x < 3.0 && x != 0.0 {
+        let pi_x = std::f32::consts::PI * x;
+        let pi_x_3 = pi_x / 3.0;
+        3.0 * pi_x.sin() * pi_x_3.sin() / (pi_x * pi_x)
+    } else if x == 0.0 {
+        1.0
+    } else {
+        0.0
+    }
+}
+
+/// Auto-detecting NEON Lanczos3 implementation  
+#[cfg(all(feature = "simd", target_arch = "aarch64"))]
+pub fn resize_lanczos3_neon_optimized_safe(
+    image: &ArrayView3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> Result<Array3<u8>> {
+    if std::arch::is_aarch64_feature_detected!("neon") {
+        unsafe { resize_lanczos3_neon_advanced(image, target_width, target_height) }
+    } else {
+        // Fallback to scalar Lanczos3
+        crate::resize_simd::resize_lanczos3_simd(image, target_width, target_height)
+            .map(|(result, _)| result)
+    }
+}
+
 /// Auto-detecting NEON implementation
 #[cfg(all(feature = "simd", target_arch = "aarch64"))]
 pub fn resize_bilinear_neon_optimized_safe(
@@ -207,6 +359,17 @@ pub fn resize_bilinear_neon_optimized_safe(
         crate::resize_simd::resize_bilinear_scalar(image, target_width, target_height)
             .map(|(result, _)| result)
     }
+}
+
+/// Fallback for non-ARM64 platforms
+#[cfg(not(target_arch = "aarch64"))]
+pub fn resize_lanczos3_neon_optimized_safe(
+    image: &ArrayView3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> Result<Array3<u8>> {
+    crate::resize_simd::resize_lanczos3_simd(image, target_width, target_height)
+        .map(|(result, _)| result)
 }
 
 /// Fallback for non-ARM64 platforms

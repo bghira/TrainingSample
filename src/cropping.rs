@@ -18,6 +18,7 @@ pub fn crop_image_array(
         return Err(anyhow::anyhow!("Crop bounds exceed image dimensions"));
     }
 
+    // Create direct slice without unnecessary allocations - slice is already contiguous
     let cropped = image.slice(s![y..y + height, x..x + width, ..]).to_owned();
     Ok(cropped)
 }

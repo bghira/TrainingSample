@@ -22,17 +22,24 @@ pub fn resize_image_array(
         ));
     }
 
-    // Convert ndarray to image::RgbImage
-    let mut img_buffer = ImageBuffer::new(width as u32, height as u32);
+    // Use pre-allocated buffer to avoid repeated allocations
+    let mut img_data = Vec::with_capacity(width * height * 3);
 
-    for (x, y, pixel) in img_buffer.enumerate_pixels_mut() {
-        let r = image[[y as usize, x as usize, 0]];
-        let g = image[[y as usize, x as usize, 1]];
-        let b = image[[y as usize, x as usize, 2]];
-        *pixel = Rgb([r, g, b]);
+    // Fill buffer in row-major order for better cache locality
+    for y in 0..height {
+        for x in 0..width {
+            img_data.push(image[[y, x, 0]]);
+            img_data.push(image[[y, x, 1]]);
+            img_data.push(image[[y, x, 2]]);
+        }
     }
 
-    // Resize using image crate with exact dimensions (force resize, no aspect ratio preservation)
+    // Create ImageBuffer directly from Vec to avoid double allocation
+    let img_buffer =
+        ImageBuffer::<Rgb<u8>, Vec<u8>>::from_vec(width as u32, height as u32, img_data)
+            .ok_or_else(|| anyhow::anyhow!("Failed to create image buffer"))?;
+
+    // Resize using image crate
     let resized = DynamicImage::ImageRgb8(img_buffer)
         .resize_exact(
             target_width,
@@ -41,15 +48,13 @@ pub fn resize_image_array(
         )
         .to_rgb8();
 
-    // Convert back to ndarray
-    let (w, h) = resized.dimensions();
-    let mut result = Array3::<u8>::zeros((h as usize, w as usize, 3));
+    // Convert back to ndarray efficiently using from_shape_vec
+    let target_h = target_height as usize;
+    let target_w = target_width as usize;
+    let resized_data = resized.into_raw();
 
-    for (x, y, pixel) in resized.enumerate_pixels() {
-        result[[y as usize, x as usize, 0]] = pixel[0];
-        result[[y as usize, x as usize, 1]] = pixel[1];
-        result[[y as usize, x as usize, 2]] = pixel[2];
-    }
+    let result = Array3::from_shape_vec((target_h, target_w, 3), resized_data)
+        .map_err(|e| anyhow::anyhow!("Failed to reshape result array: {}", e))?;
 
     Ok(result)
 }

@@ -50,6 +50,7 @@ impl ResizeMetrics {
 #[derive(Debug, Clone, Copy)]
 pub enum FilterType {
     Bilinear,
+    Lanczos3,
     Lanczos4,
 }
 
@@ -67,6 +68,7 @@ impl FilterWeights {
 
         let (filter_fn, support): (fn(f32) -> f32, f32) = match filter {
             FilterType::Bilinear => (bilinear_filter as fn(f32) -> f32, 1.0),
+            FilterType::Lanczos3 => (lanczos3_filter as fn(f32) -> f32, 3.0),
             FilterType::Lanczos4 => (lanczos4_filter as fn(f32) -> f32, 4.0),
         };
 
@@ -118,6 +120,19 @@ fn bilinear_filter(x: f32) -> f32 {
     let x = x.abs();
     if x < 1.0 {
         1.0 - x
+    } else {
+        0.0
+    }
+}
+
+fn lanczos3_filter(x: f32) -> f32 {
+    let x = x.abs();
+    if x < 3.0 && x != 0.0 {
+        let pi_x = std::f32::consts::PI * x;
+        let pi_x_3 = pi_x / 3.0;
+        3.0 * pi_x.sin() * pi_x_3.sin() / (pi_x * pi_x)
+    } else if x == 0.0 {
+        1.0
     } else {
         0.0
     }
@@ -426,6 +441,156 @@ pub fn resize_bilinear_simd(
     Ok((result, metrics))
 }
 
+/// SIMD-optimized Lanczos3 interpolation
+#[cfg(feature = "simd")]
+pub fn resize_lanczos3_simd(
+    image: &ArrayView3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> Result<(Array3<u8>, ResizeMetrics)> {
+    let start = std::time::Instant::now();
+    let (src_height, src_width, channels) = image.dim();
+
+    if channels != 3 {
+        return Err(anyhow::anyhow!(
+            "Only RGB images (3 channels) are supported"
+        ));
+    }
+
+    if target_width == 0 || target_height == 0 {
+        return Err(anyhow::anyhow!(
+            "Target dimensions must be greater than zero"
+        ));
+    }
+
+    let dst_width = target_width as usize;
+    let dst_height = target_height as usize;
+
+    // Precompute filter weights for horizontal and vertical passes
+    let h_weights = FilterWeights::new(src_width, dst_width, FilterType::Lanczos3);
+    let v_weights = FilterWeights::new(src_height, dst_height, FilterType::Lanczos3);
+
+    // Temporary buffer for horizontal pass
+    let mut temp = Array3::<f32>::zeros((src_height, dst_width, 3));
+
+    // Horizontal pass with SIMD
+    temp.outer_iter_mut().enumerate().for_each(|(y, mut row)| {
+        for dst_x in 0..dst_width {
+            let weights_start = dst_x * h_weights.support;
+            let weights_end = weights_start + h_weights.support;
+
+            if weights_end > h_weights.weights.len() {
+                continue;
+            }
+
+            // SIMD processing for multiple weights at once
+            let simd_chunks = h_weights.support / 8;
+
+            for c in 0..3 {
+                let mut sum = f32x8::splat(0.0);
+
+                // Process 8 weights at a time
+                for chunk in 0..simd_chunks {
+                    let base_idx = weights_start + chunk * 8;
+                    if base_idx + 8 <= h_weights.weights.len() {
+                        let mut pixel_vals = [0.0f32; 8];
+                        let mut weight_vals = [0.0f32; 8];
+
+                        for i in 0..8 {
+                            let weight_idx = base_idx + i;
+                            let src_x = h_weights.indices[weight_idx];
+                            pixel_vals[i] = image[[y, src_x, c]] as f32;
+                            weight_vals[i] = h_weights.weights[weight_idx];
+                        }
+
+                        let pixels = f32x8::from(pixel_vals);
+                        let weights = f32x8::from(weight_vals);
+                        sum += pixels * weights;
+                    }
+                }
+
+                // Handle remainder weights (scalar)
+                let mut scalar_sum = sum.reduce_add();
+                for i in (simd_chunks * 8)..h_weights.support {
+                    let weight_idx = weights_start + i;
+                    if weight_idx < h_weights.weights.len() {
+                        let src_x = h_weights.indices[weight_idx];
+                        scalar_sum += image[[y, src_x, c]] as f32 * h_weights.weights[weight_idx];
+                    }
+                }
+
+                row[[dst_x, c]] = scalar_sum.clamp(0.0, 255.0);
+            }
+        }
+    });
+
+    // Vertical pass with SIMD
+    let mut result = Array3::<u8>::zeros((dst_height, dst_width, 3));
+
+    result
+        .outer_iter_mut()
+        .enumerate()
+        .for_each(|(dst_y, mut row)| {
+            let weights_start = dst_y * v_weights.support;
+            let weights_end = weights_start + v_weights.support;
+
+            if weights_end > v_weights.weights.len() {
+                return;
+            }
+
+            for dst_x in 0..dst_width {
+                // SIMD processing for vertical weights
+                let simd_chunks = v_weights.support / 8;
+
+                for c in 0..3 {
+                    let mut sum = f32x8::splat(0.0);
+
+                    // Process 8 weights at a time
+                    for chunk in 0..simd_chunks {
+                        let base_idx = weights_start + chunk * 8;
+                        if base_idx + 8 <= v_weights.weights.len() {
+                            let mut pixel_vals = [0.0f32; 8];
+                            let mut weight_vals = [0.0f32; 8];
+
+                            for i in 0..8 {
+                                let weight_idx = base_idx + i;
+                                let src_y = v_weights.indices[weight_idx];
+                                pixel_vals[i] = temp[[src_y, dst_x, c]];
+                                weight_vals[i] = v_weights.weights[weight_idx];
+                            }
+
+                            let pixels = f32x8::from(pixel_vals);
+                            let weights = f32x8::from(weight_vals);
+                            sum += pixels * weights;
+                        }
+                    }
+
+                    // Handle remainder weights (scalar)
+                    let mut scalar_sum = sum.reduce_add();
+                    for i in (simd_chunks * 8)..v_weights.support {
+                        let weight_idx = weights_start + i;
+                        if weight_idx < v_weights.weights.len() {
+                            let src_y = v_weights.indices[weight_idx];
+                            scalar_sum += temp[[src_y, dst_x, c]] * v_weights.weights[weight_idx];
+                        }
+                    }
+
+                    row[[dst_x, c]] = (scalar_sum + 0.5).clamp(0.0, 255.0) as u8;
+                }
+            }
+        });
+
+    let metrics = ResizeMetrics::new(
+        src_width * src_height,
+        dst_width * dst_height,
+        start.elapsed().as_nanos() as u64,
+        8,
+        "lanczos3_simd_f32x8",
+    );
+
+    Ok((result, metrics))
+}
+
 /// SIMD-optimized Lanczos4 interpolation
 #[cfg(feature = "simd")]
 pub fn resize_lanczos4_simd(
@@ -650,6 +815,7 @@ pub fn resize_image_optimized(
     {
         match filter {
             FilterType::Bilinear => resize_bilinear_simd_fast(image, target_width, target_height),
+            FilterType::Lanczos3 => resize_lanczos3_simd(image, target_width, target_height),
             FilterType::Lanczos4 => resize_lanczos4_simd(image, target_width, target_height),
         }
     }
@@ -658,8 +824,8 @@ pub fn resize_image_optimized(
     {
         match filter {
             FilterType::Bilinear => resize_bilinear_scalar(image, target_width, target_height),
-            FilterType::Lanczos4 => {
-                // Fallback to bilinear for Lanczos4 in scalar mode
+            FilterType::Lanczos3 | FilterType::Lanczos4 => {
+                // Fallback to bilinear for Lanczos in scalar mode
                 resize_bilinear_scalar(image, target_width, target_height)
             }
         }

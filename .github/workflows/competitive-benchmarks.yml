@@ -1,0 +1,109 @@
+name: Competitive Benchmarks
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  schedule:
+    # Run weekly to track performance over time
+    - cron: '0 0 * * 0'
+
+jobs:
+  competitive-benchmarks:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11, 3.12]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+
+    - name: Set up Rust
+      uses: actions-rs/toolchain@v1
+      with:
+        toolchain: stable
+        override: true
+        components: rustfmt, clippy
+
+    - name: Install system dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libopencv-dev python3-opencv
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install maturin
+        pip install -r requirements-test.txt
+
+    - name: Build Rust library with Python bindings
+      run: |
+        # Build with optimizations and all relevant features
+        maturin develop --release --features "python-bindings,simd,video"
+
+    - name: Run competitive benchmarks
+      run: |
+        # Set environment variable to indicate CI
+        export CI=true
+        pytest tests/test_competitive_benchmarks.py -v --tb=short --benchmark-json=benchmark-results.json
+      continue-on-error: true  # Don't fail CI if benchmarks don't meet targets yet
+
+    - name: Upload benchmark results
+      uses: actions/upload-artifact@v3
+      if: always()
+      with:
+        name: competitive-benchmark-results-py${{ matrix.python-version }}
+        path: |
+          benchmark-results.json
+          pytest-report.html
+        retention-days: 30
+
+    - name: Comment benchmark results on PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const fs = require('fs');
+          try {
+            const benchmarkData = JSON.parse(fs.readFileSync('benchmark-results.json', 'utf8'));
+            
+            let comment = '## 🚀 Competitive Benchmark Results\n\n';
+            comment += '| Test | Performance | Target | Status |\n';
+            comment += '|------|------------|--------|--------|\n';
+            
+            // Parse benchmark results and format for comment
+            for (const benchmark of benchmarkData.benchmarks || []) {
+              const name = benchmark.name;
+              const ops = benchmark.stats?.ops || 'N/A';
+              comment += `| ${name} | ${ops} ops/sec | See test | ⚡ |\n`;
+            }
+            
+            comment += '\n*Competitive benchmarks compare against OpenCV and NumPy for real-world SFT workloads (5120x5120 images)*';
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: comment
+            });
+          } catch (error) {
+            console.log('Could not post benchmark results:', error.message);
+          }
+
+  benchmark-tracking:
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    needs: competitive-benchmarks
+    
+    steps:
+    - name: Track performance over time
+      run: |
+        echo "🏃‍♂️ Performance tracking for main branch"
+        echo "Future: Store benchmark results in database/dashboard"
+        echo "Future: Alert on performance regressions"

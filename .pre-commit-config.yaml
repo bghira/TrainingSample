@@ -89,3 +89,15 @@ repos:
         files: \.(py|rs)$
         pass_filenames: false
         stages: [pre-commit]
+
+  # Competitive benchmarks (CI only - too heavy for local precommit)
+  - repo: local
+    hooks:
+      - id: competitive-benchmarks
+        name: Competitive performance benchmarks
+        description: Run competitive benchmarks against OpenCV/NumPy
+        entry: bash -c 'if [[ "$CI" == "true" ]] && ([ -d "target/wheels" ] || python -c "import trainingsample" 2>/dev/null); then pytest tests/test_competitive_benchmarks.py -v --tb=short; else echo "Skipping competitive benchmarks (not in CI or bindings not available)"; fi'
+        language: system
+        files: \.(py|rs)$
+        pass_filenames: false
+        stages: [pre-commit]
