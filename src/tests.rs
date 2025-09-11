@@ -117,7 +117,7 @@ mod x86_optimization_tests {
         let image = create_test_image();
 
         // Test single-threaded optimization
-        let luminance1 = calculate_luminance_x86_optimized(&image.view());
+        let luminance1 = calculate_luminance_x86_optimized(&image.view()).unwrap();
         assert!(
             luminance1 > 0.0 && luminance1 < 255.0,
             "Luminance should be in valid range"
@@ -211,10 +211,10 @@ mod x86_optimization_tests {
                 "x86 resize should fail gracefully on non-x86"
             );
 
-            let luminance1 = calculate_luminance_x86_optimized(&image.view());
-            assert_eq!(
-                luminance1, 0.0,
-                "x86 luminance should return 0.0 on non-x86"
+            let luminance_result = calculate_luminance_x86_optimized(&image.view());
+            assert!(
+                luminance_result.is_err(),
+                "x86 luminance should fail on non-x86"
             );
 
             let luminance2 = calculate_luminance_x86_parallel(&image.view());
@@ -230,7 +230,7 @@ mod x86_optimization_tests {
             let resize_result = resize_bilinear_x86_optimized(&image.view(), 50, 50);
             assert!(resize_result.is_ok(), "x86 resize should succeed on x86");
 
-            let luminance1 = calculate_luminance_x86_optimized(&image.view());
+            let luminance1 = calculate_luminance_x86_optimized(&image.view()).unwrap();
             assert!(luminance1 > 0.0, "x86 luminance should work on x86");
 
             let luminance2 = calculate_luminance_x86_parallel(&image.view());

@@ -256,7 +256,8 @@ pub fn calculate_luminance_x86_optimized(image: PyReadonlyArray3<u8>) -> PyResul
     use crate::luminance_x86_optimized::calculate_luminance_x86_optimized;
 
     let image_array = image.as_array();
-    let luminance = calculate_luminance_x86_optimized(&image_array);
+    let luminance = calculate_luminance_x86_optimized(&image_array)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
     Ok(luminance)
 }
 

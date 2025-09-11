@@ -70,6 +70,14 @@ impl X86ResizeEngine {
             ));
         }
 
+        if target_width == 0 || target_height == 0 {
+            return Err(anyhow::anyhow!(
+                "Target dimensions must be greater than zero, got {}x{}",
+                target_width,
+                target_height
+            ));
+        }
+
         let dst_width = target_width as usize;
         let dst_height = target_height as usize;
 

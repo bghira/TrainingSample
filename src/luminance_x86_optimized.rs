@@ -17,9 +17,18 @@ use std::arch::x86_64::*;
 ///
 /// Calculate luminance using the best available x86 instruction set
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
-pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {
+pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> Result<f64> {
+    let (_, _, channels) = image.dim();
+
+    if channels != 3 {
+        return Err(anyhow::anyhow!(
+            "Only RGB images (3 channels) are supported, got {} channels",
+            channels
+        ));
+    }
+
     // Runtime CPU feature detection
-    if is_x86_feature_detected!("avx512f") {
+    let result = if is_x86_feature_detected!("avx512f") {
         unsafe { calculate_luminance_avx512(image) }
     } else if is_x86_feature_detected!("avx2") && is_x86_feature_detected!("fma") {
         unsafe { calculate_luminance_avx2_fma(image) }
@@ -28,8 +37,10 @@ pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {
     } else if is_x86_feature_detected!("sse4.1") {
         unsafe { calculate_luminance_sse41(image) }
     } else {
-        calculate_luminance_scalar(image)
-    }
+        calculate_luminance_scalar_validated(image)
+    };
+
+    Ok(result)
 }
 
 /// AVX-512 luminance calculation - processes 16 pixels simultaneously
@@ -38,11 +49,7 @@ pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {
 #[target_feature(enable = "avx512f")]
 #[allow(clippy::incompatible_msrv)]
 unsafe fn calculate_luminance_avx512(image: &ArrayView3<u8>) -> f64 {
-    let (height, width, channels) = image.dim();
-
-    if channels != 3 {
-        return calculate_luminance_scalar(image);
-    }
+    let (height, width, _) = image.dim();
 
     // Luminance coefficients: Y = 0.299*R + 0.587*G + 0.114*B
     let r_coeff = _mm512_set1_ps(0.299);
@@ -109,11 +116,7 @@ unsafe fn calculate_luminance_avx512(image: &ArrayView3<u8>) -> f64 {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> f64 {
-    let (height, width, channels) = image.dim();
-
-    if channels != 3 {
-        return calculate_luminance_scalar(image);
-    }
+    let (height, width, _) = image.dim();
 
     // Luminance coefficients
     let r_coeff = _mm256_set1_ps(0.299);
@@ -173,11 +176,7 @@ unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> f64 {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2")]
 unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> f64 {
-    let (height, width, channels) = image.dim();
-
-    if channels != 3 {
-        return calculate_luminance_scalar(image);
-    }
+    let (height, width, _) = image.dim();
 
     let r_coeff = _mm256_set1_ps(0.299);
     let g_coeff = _mm256_set1_ps(0.587);
@@ -239,11 +238,7 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> f64 {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "sse4.1")]
 unsafe fn calculate_luminance_sse41(image: &ArrayView3<u8>) -> f64 {
-    let (height, width, channels) = image.dim();
-
-    if channels != 3 {
-        return calculate_luminance_scalar(image);
-    }
+    let (height, width, _) = image.dim();
 
     let r_coeff = _mm_set1_ps(0.299);
     let g_coeff = _mm_set1_ps(0.587);
@@ -324,6 +319,27 @@ fn calculate_luminance_scalar(image: &ArrayView3<u8>) -> f64 {
     total / pixel_count
 }
 
+/// Scalar luminance calculation without channel validation (assumes pre-validated)
+#[allow(dead_code)]
+fn calculate_luminance_scalar_validated(image: &ArrayView3<u8>) -> f64 {
+    let (height, width, _) = image.dim();
+
+    let mut total = 0.0;
+    let pixel_count = (height * width) as f64;
+
+    for h in 0..height {
+        for w in 0..width {
+            let r = image[[h, w, 0]] as f64;
+            let g = image[[h, w, 1]] as f64;
+            let b = image[[h, w, 2]] as f64;
+            let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+            total += lum;
+        }
+    }
+
+    total / pixel_count
+}
+
 /// Horizontal sum for AVX-512 registers
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
@@ -361,12 +377,15 @@ pub fn calculate_luminance_x86_parallel(image: &ArrayView3<u8>) -> Result<f64> {
     let (height, width, channels) = image.dim();
 
     if channels != 3 {
-        return Ok(0.0);
+        return Err(anyhow::anyhow!(
+            "Only RGB images (3 channels) are supported, got {} channels",
+            channels
+        ));
     }
 
     // For small images, single-threaded is faster due to thread overhead
     if height * width < 1000000 {
-        return Ok(calculate_luminance_x86_optimized(image));
+        return calculate_luminance_x86_optimized(image);
     }
 
     let pixel_count = (height * width) as f64;
@@ -385,14 +404,16 @@ pub fn calculate_luminance_x86_parallel(image: &ArrayView3<u8>) -> Result<f64> {
     Ok(total / pixel_count)
 }
 
-/// Fallback for non-x86 platforms
-#[cfg(not(all(feature = "simd", target_arch = "x86_64")))]
-pub fn calculate_luminance_x86_optimized(_image: &ArrayView3<u8>) -> f64 {
-    0.0 // Not available on this platform
-}
-
 #[cfg(not(all(feature = "simd", target_arch = "x86_64")))]
 pub fn calculate_luminance_x86_parallel(_image: &ArrayView3<u8>) -> Result<f64> {
+    Err(anyhow::anyhow!(
+        "x86 optimizations not available on this platform"
+    ))
+}
+
+/// Fallback for non-x86 platforms
+#[cfg(not(all(feature = "simd", target_arch = "x86_64")))]
+pub fn calculate_luminance_x86_optimized(_image: &ArrayView3<u8>) -> Result<f64> {
     Err(anyhow::anyhow!(
         "x86 optimizations not available on this platform"
     ))
