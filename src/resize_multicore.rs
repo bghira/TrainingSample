@@ -162,7 +162,7 @@ fn process_block_with_neon(
     params: BlockParams,
 ) {
     let x_scale = params.src_width as f32 / params.dst_width as f32;
-    let y_scale = params.src_height as f32 / params.block_start_y.max(1) as f32;
+    let y_scale = params.src_height as f32 / params._dst_height as f32;
 
     // Use the same NEON logic as the single-core version
     // but operating on just this block
@@ -236,7 +236,7 @@ fn process_block_with_neon(
 ) {
     // Fallback scalar implementation for non-ARM64 platforms
     let x_scale = src_width as f32 / dst_width as f32;
-    let y_scale = src_height as f32 / block_start_y.max(1) as f32;
+    let y_scale = src_height as f32 / _dst_height as f32;
 
     for (local_y, mut row) in block.outer_iter_mut().enumerate() {
         let dst_y = block_start_y + local_y;
