@@ -175,6 +175,7 @@ pub fn resize_bilinear_simd_fast(
     result
         .axis_iter_mut(Axis(0))
         .enumerate()
+        .par_bridge()
         .for_each(|(dst_y, mut row)| {
             let src_y_f = (dst_y as f32 + 0.5) * y_scale - 0.5;
             let src_y = src_y_f.floor() as i32;
@@ -319,6 +320,7 @@ pub fn resize_bilinear_simd(
     result
         .outer_iter_mut()
         .enumerate()
+        .par_bridge()
         .for_each(|(dst_y, mut row)| {
             let src_y_f = (dst_y as f32 + 0.5) * y_scale - 0.5;
             let src_y = src_y_f.floor() as i32;
