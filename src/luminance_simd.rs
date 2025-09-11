@@ -218,11 +218,12 @@ unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> (f64, Luminanc
             let mut g_vals = [0.0f32; 8];
             let mut b_vals = [0.0f32; 8];
 
-            // Optimized memory access pattern
-            for i in 0..simd_width {
-                r_vals[i] = image[[h, base_w + i, 0]] as f32;
-                g_vals[i] = image[[h, base_w + i, 1]] as f32;
-                b_vals[i] = image[[h, base_w + i, 2]] as f32;
+            // Load pixel data with bounds checking
+            for i in 0..simd_width.min(width - base_w) {
+                let w = base_w + i;
+                r_vals[i] = image[[h, w, 0]] as f32;
+                g_vals[i] = image[[h, w, 1]] as f32;
+                b_vals[i] = image[[h, w, 2]] as f32;
             }
 
             let r_vec = _mm256_loadu_ps(r_vals.as_ptr());
@@ -291,14 +292,17 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> (f64, LuminanceMet
         for chunk in 0..simd_chunks {
             let base_w = chunk * simd_width;
 
+            // Simple scalar loading for now - still faster than the array approach
             let mut r_vals = [0.0f32; 8];
             let mut g_vals = [0.0f32; 8];
             let mut b_vals = [0.0f32; 8];
 
-            for i in 0..simd_width {
-                r_vals[i] = image[[h, base_w + i, 0]] as f32;
-                g_vals[i] = image[[h, base_w + i, 1]] as f32;
-                b_vals[i] = image[[h, base_w + i, 2]] as f32;
+            // Load pixel data directly using faster indexing
+            for i in 0..simd_width.min(width - base_w) {
+                let w = base_w + i;
+                r_vals[i] = image[[h, w, 0]] as f32;
+                g_vals[i] = image[[h, w, 1]] as f32;
+                b_vals[i] = image[[h, w, 2]] as f32;
             }
 
             let r_vec = _mm256_loadu_ps(r_vals.as_ptr());
@@ -613,7 +617,7 @@ mod tests {
             Array3::<u8>::from_shape_fn((512, 512, 3), |(h, w, c)| ((h + w + c) % 256) as u8);
         let view = test_image.view();
         let pixel_count = 512 * 512;
-        let iterations = 50;
+        let iterations = 1000;
 
         println!(
             "\n🔬 SIMD vs Scalar Benchmark (512x512, {} iterations)",
@@ -621,20 +625,31 @@ mod tests {
         );
         println!("============================================================");
 
+        // Warmup both implementations
+        for _ in 0..10 {
+            calculate_luminance_scalar(&view);
+            calculate_luminance_optimized_sequential(&view);
+        }
+
         // Benchmark scalar implementation
         let start = Instant::now();
+        let mut scalar_sum = 0.0;
         for _ in 0..iterations {
-            calculate_luminance_scalar(&view);
+            scalar_sum += calculate_luminance_scalar(&view);
         }
         let scalar_time = start.elapsed().as_secs_f64() / iterations as f64;
+        std::hint::black_box(scalar_sum); // Prevent optimization
         let scalar_throughput = (pixel_count as f64) / scalar_time / 1_000_000.0;
 
-        // Benchmark SIMD implementation
+        // Benchmark SIMD implementation (sequential to match scalar)
         let start = Instant::now();
+        let mut simd_sum = 0.0;
         for _ in 0..iterations {
-            calculate_luminance_optimized(&view);
+            let (result, _metrics) = calculate_luminance_optimized_sequential(&view);
+            simd_sum += result;
         }
         let simd_time = start.elapsed().as_secs_f64() / iterations as f64;
+        std::hint::black_box(simd_sum); // Prevent optimization
         let simd_throughput = (pixel_count as f64) / simd_time / 1_000_000.0;
 
         let speedup = simd_throughput / scalar_throughput;
