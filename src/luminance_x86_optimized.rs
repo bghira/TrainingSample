@@ -14,7 +14,6 @@ use std::arch::x86_64::*;
 /// - AVX-512: 16x speedup over scalar
 /// - AVX2 + FMA: 8x speedup over scalar
 /// - AVX2: 6x speedup over scalar
-
 /// Calculate luminance using the best available x86 instruction set
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {

@@ -2,9 +2,6 @@ use anyhow::Result;
 use ndarray::{Array3, ArrayView3};
 
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
-use rayon::prelude::*;
-
-#[cfg(all(feature = "simd", target_arch = "x86_64"))]
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
@@ -28,14 +25,14 @@ pub struct X86ResizeEngine {
 
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[derive(Debug, Clone, Copy)]
-struct CpuFeatures {
-    has_avx512f: bool,
-    has_avx512bw: bool,
-    has_avx512dq: bool,
-    has_avx2: bool,
-    has_fma: bool,
-    has_sse41: bool,
-    is_amd_zen: bool,
+pub struct CpuFeatures {
+    pub has_avx512f: bool,
+    pub has_avx512bw: bool,
+    pub has_avx512dq: bool,
+    pub has_avx2: bool,
+    pub has_fma: bool,
+    pub has_sse41: bool,
+    pub is_amd_zen: bool,
 }
 
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
@@ -164,6 +161,8 @@ impl X86ResizeEngine {
             let y_weight_vec = _mm512_set1_ps(y_weight);
             let inv_y_weight_vec = _mm512_set1_ps(inv_y_weight);
 
+            let mut row = result.slice_mut(ndarray::s![dst_y, .., ..]);
+
             let mut dst_x = 0;
 
             // Process 16 pixels at once with AVX-512
@@ -237,6 +236,8 @@ impl X86ResizeEngine {
             let inv_y_weight = 1.0 - y_weight;
             let y_weight_vec = _mm256_set1_ps(y_weight);
             let inv_y_weight_vec = _mm256_set1_ps(inv_y_weight);
+
+            let mut row = result.slice_mut(ndarray::s![dst_y, .., ..]);
 
             let mut dst_x = 0;
 
@@ -325,6 +326,8 @@ impl X86ResizeEngine {
             let y0 = (src_y.max(0) as usize).min(src_height - 1);
             let y1 = ((src_y + 1).max(0) as usize).min(src_height - 1);
             let inv_y_weight = 1.0 - y_weight;
+
+            let mut row = result.slice_mut(ndarray::s![dst_y, .., ..]);
 
             for dst_x in 0..dst_width {
                 unsafe {
