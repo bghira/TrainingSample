@@ -17,12 +17,6 @@ use std::arch::x86_64::*;
 /// - EPYC 7xxx: 10-16x speedup over scalar
 /// - Threadripper: 8-16x speedup over scalar
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
-#[allow(
-    dead_code,
-    clippy::too_many_arguments,
-    clippy::needless_range_loop,
-    clippy::incompatible_msrv
-)]
 pub struct X86ResizeEngine {
     #[allow(dead_code)]
     thread_pool: rayon::ThreadPool,
@@ -136,6 +130,7 @@ fn detect_amd_zen() -> bool {
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 impl X86ResizeEngine {
     #[target_feature(enable = "avx512f,avx512bw,avx512dq")]
+    #[allow(clippy::incompatible_msrv)]
     unsafe fn resize_avx512(
         &self,
         image: &ArrayView3<u8>,
@@ -213,6 +208,7 @@ impl X86ResizeEngine {
     }
 
     #[target_feature(enable = "avx2,fma")]
+    #[allow(clippy::incompatible_msrv)]
     unsafe fn resize_avx2_fma(
         &self,
         image: &ArrayView3<u8>,
@@ -362,6 +358,11 @@ impl X86ResizeEngine {
 /// AVX-512 pixel processing - handles 16 pixels simultaneously
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f,avx512bw,avx512dq")]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    clippy::incompatible_msrv
+)]
 unsafe fn process_16_pixels_avx512(
     image: &ArrayView3<u8>,
     row: &mut ndarray::ArrayViewMut2<u8>,
@@ -475,6 +476,11 @@ unsafe fn process_16_pixels_avx512(
 /// AVX2 + FMA pixel processing - handles 8 pixels simultaneously
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2,fma")]
+#[allow(
+    clippy::too_many_arguments,
+    clippy::needless_range_loop,
+    clippy::incompatible_msrv
+)]
 unsafe fn process_8_pixels_avx2_fma(
     image: &ArrayView3<u8>,
     row: &mut ndarray::ArrayViewMut2<u8>,
@@ -574,6 +580,7 @@ unsafe fn process_8_pixels_avx2_fma(
 
 /// Process remainder pixels for AVX-512
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[allow(clippy::too_many_arguments)]
 unsafe fn process_remainder_avx512(
     image: &ArrayView3<u8>,
     row: &mut ndarray::ArrayViewMut2<u8>,
@@ -603,6 +610,7 @@ unsafe fn process_remainder_avx512(
 
 /// Scalar pixel processing for fallback
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[allow(clippy::too_many_arguments)]
 unsafe fn process_pixel_scalar(
     image: &ArrayView3<u8>,
     row: &mut ndarray::ArrayViewMut2<u8>,

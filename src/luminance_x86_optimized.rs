@@ -17,7 +17,6 @@ use std::arch::x86_64::*;
 ///
 /// Calculate luminance using the best available x86 instruction set
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
-#[allow(clippy::incompatible_msrv, clippy::let_and_return)]
 pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {
     // Runtime CPU feature detection
     if is_x86_feature_detected!("avx512f") {
@@ -37,6 +36,7 @@ pub fn calculate_luminance_x86_optimized(image: &ArrayView3<u8>) -> f64 {
 /// Optimized for Intel Xeon Scalable processors (Skylake-SP+)
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
+#[allow(clippy::incompatible_msrv)]
 unsafe fn calculate_luminance_avx512(image: &ArrayView3<u8>) -> f64 {
     let (height, width, channels) = image.dim();
 
@@ -327,6 +327,7 @@ fn calculate_luminance_scalar(image: &ArrayView3<u8>) -> f64 {
 /// Horizontal sum for AVX-512 registers
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx512f")]
+#[allow(clippy::incompatible_msrv)]
 unsafe fn horizontal_sum_avx512(v: __m512) -> f32 {
     _mm512_reduce_add_ps(v)
 }
