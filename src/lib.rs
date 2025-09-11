@@ -10,6 +10,9 @@ mod resize;
 mod luminance_simd;
 
 #[cfg(feature = "simd")]
+mod luminance_x86_optimized;
+
+#[cfg(feature = "simd")]
 mod resize_simd;
 
 #[cfg(feature = "simd")]
@@ -17,6 +20,9 @@ mod resize_neon_optimized;
 
 #[cfg(feature = "simd")]
 mod resize_multicore;
+
+#[cfg(feature = "simd")]
+mod resize_x86_optimized;
 
 #[cfg(feature = "metal")]
 mod resize_metal;
@@ -50,5 +56,20 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(batch_resize_images, m)?)?;
     m.add_function(wrap_pyfunction!(batch_calculate_luminance, m)?)?;
     m.add_function(wrap_pyfunction!(batch_resize_videos, m)?)?;
+
+    // High-performance x86 optimizations (available when compiled for x86_64)
+    m.add_function(wrap_pyfunction!(
+        crate::python_bindings::resize_bilinear_x86_optimized,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::python_bindings::calculate_luminance_x86_optimized,
+        m
+    )?)?;
+    m.add_function(wrap_pyfunction!(
+        crate::python_bindings::get_x86_cpu_features,
+        m
+    )?)?;
+
     Ok(())
 }

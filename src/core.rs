@@ -11,6 +11,13 @@ pub use crate::resize_simd::*;
 #[cfg(feature = "simd")]
 pub use crate::resize_multicore::*;
 
+// High-performance x86 optimizations
+#[cfg(feature = "simd")]
+pub use crate::resize_x86_optimized::*;
+
+#[cfg(feature = "simd")]
+pub use crate::luminance_x86_optimized::*;
+
 #[cfg(feature = "metal")]
 pub use crate::resize_metal::*;
 

@@ -224,3 +224,100 @@ pub fn batch_resize_videos<'py>(
     }
     Ok(py_results)
 }
+
+// High-performance x86 optimization Python bindings
+#[cfg(all(feature = "python-bindings", feature = "simd", target_arch = "x86_64"))]
+#[pyfunction]
+pub fn resize_bilinear_x86_optimized<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    use crate::resize_x86_optimized::resize_bilinear_x86_optimized;
+
+    let image_array = image.as_array();
+
+    match resize_bilinear_x86_optimized(&image_array, target_width, target_height) {
+        Ok(resized) => {
+            let py_array = PyArray3::from_array_bound(py, &resized);
+            Ok(py_array)
+        }
+        Err(e) => Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "x86 optimized resize failed: {}",
+            e
+        ))),
+    }
+}
+
+#[cfg(all(feature = "python-bindings", feature = "simd", target_arch = "x86_64"))]
+#[pyfunction]
+pub fn calculate_luminance_x86_optimized(image: PyReadonlyArray3<u8>) -> PyResult<f64> {
+    use crate::luminance_x86_optimized::calculate_luminance_x86_optimized;
+
+    let image_array = image.as_array();
+    let luminance = calculate_luminance_x86_optimized(&image_array);
+    Ok(luminance)
+}
+
+#[cfg(all(feature = "python-bindings", feature = "simd", target_arch = "x86_64"))]
+#[pyfunction]
+pub fn get_x86_cpu_features() -> PyResult<std::collections::HashMap<String, bool>> {
+    use crate::resize_x86_optimized::detect_cpu_features;
+
+    let features = detect_cpu_features();
+    let mut feature_map = std::collections::HashMap::new();
+
+    feature_map.insert("avx512f".to_string(), features.has_avx512f);
+    feature_map.insert("avx512bw".to_string(), features.has_avx512bw);
+    feature_map.insert("avx512dq".to_string(), features.has_avx512dq);
+    feature_map.insert("avx2".to_string(), features.has_avx2);
+    feature_map.insert("fma".to_string(), features.has_fma);
+    feature_map.insert("sse41".to_string(), features.has_sse41);
+    feature_map.insert("is_amd_zen".to_string(), features.is_amd_zen);
+
+    Ok(feature_map)
+}
+
+// Fallback functions for non-x86 platforms
+#[cfg(all(
+    feature = "python-bindings",
+    not(all(feature = "simd", target_arch = "x86_64"))
+))]
+#[pyfunction]
+pub fn resize_bilinear_x86_optimized<'py>(
+    _py: Python<'py>,
+    _image: PyReadonlyArray3<u8>,
+    _target_width: u32,
+    _target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyNotImplementedError::new_err(
+        "x86 optimizations are not available on this platform",
+    ))
+}
+
+#[cfg(all(
+    feature = "python-bindings",
+    not(all(feature = "simd", target_arch = "x86_64"))
+))]
+#[pyfunction]
+pub fn calculate_luminance_x86_optimized(_image: PyReadonlyArray3<u8>) -> PyResult<f64> {
+    Ok(0.0) // Return 0.0 as fallback
+}
+
+#[cfg(all(
+    feature = "python-bindings",
+    not(all(feature = "simd", target_arch = "x86_64"))
+))]
+#[pyfunction]
+pub fn get_x86_cpu_features() -> PyResult<std::collections::HashMap<String, bool>> {
+    let mut feature_map = std::collections::HashMap::new();
+    feature_map.insert("avx512f".to_string(), false);
+    feature_map.insert("avx512bw".to_string(), false);
+    feature_map.insert("avx512dq".to_string(), false);
+    feature_map.insert("avx2".to_string(), false);
+    feature_map.insert("fma".to_string(), false);
+    feature_map.insert("sse41".to_string(), false);
+    feature_map.insert("is_amd_zen".to_string(), false);
+    Ok(feature_map)
+}

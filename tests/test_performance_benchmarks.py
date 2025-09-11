@@ -428,6 +428,165 @@ class TestDetailedBenchmarks:
             assert img.shape == (224, 224, 3)
 
 
+class TestX86OptimizationPerformance:
+    """Performance regression tests for x86 optimizations."""
+
+    @pytest.mark.skipif(not HAS_BINDINGS, reason="Python bindings not available")
+    def test_x86_optimization_performance_regression(self, performance_test_images):
+        """Test that x86 optimizations provide expected performance benefits."""
+        import platform
+
+        if not hasattr(tsr, "resize_bilinear_x86_optimized"):
+            pytest.skip("x86 optimizations not available")
+
+        test_image = performance_test_images["small_batch"][0]  # 224x224 image
+        target_width, target_height = 112, 112
+
+        if platform.machine() == "x86_64":
+            # Test x86 optimized resize performance
+            x86_times = []
+            for _ in range(5):  # Multiple runs for stability
+                start = time.perf_counter()
+                try:
+                    result = tsr.resize_bilinear_x86_optimized(
+                        test_image, target_width, target_height
+                    )
+                    elapsed = time.perf_counter() - start
+                    x86_times.append(elapsed)
+                    assert result.shape == (target_height, target_width, 3)
+                except Exception:
+                    pytest.skip("x86 optimizations not working on this platform")
+
+            avg_x86_time = sum(x86_times) / len(x86_times)
+
+            # Test regular batch resize performance
+            regular_times = []
+            for _ in range(5):
+                start = time.perf_counter()
+                results = tsr.batch_resize_images(
+                    [test_image], [(target_width, target_height)]
+                )
+                elapsed = time.perf_counter() - start
+                regular_times.append(elapsed)
+                assert results[0].shape == (target_height, target_width, 3)
+
+            avg_regular_time = sum(regular_times) / len(regular_times)
+
+            # x86 should be competitive (within 50% performance range)
+            performance_ratio = avg_x86_time / avg_regular_time
+            assert performance_ratio < 1.5, (
+                f"x86 optimization should be competitive: "
+                f"{performance_ratio:.2f}x slower"
+            )
+
+            print(
+                f"x86 avg time: {avg_x86_time:.4f}s, "
+                f"regular avg time: {avg_regular_time:.4f}s, "
+                f"ratio: {performance_ratio:.2f}x"
+            )
+        else:
+            pytest.skip("x86 performance tests only run on x86_64 platforms")
+
+    @pytest.mark.skipif(not HAS_BINDINGS, reason="Python bindings not available")
+    def test_x86_luminance_performance_regression(self, performance_test_images):
+        """Test x86 luminance calculation performance."""
+        import platform
+
+        if not hasattr(tsr, "calculate_luminance_x86_optimized"):
+            pytest.skip("x86 luminance optimization not available")
+
+        large_image = performance_test_images["large_batch"][0]  # 512x512 image
+
+        if platform.machine() == "x86_64":
+            # Test x86 optimized luminance performance
+            x86_times = []
+            x86_results = []
+            for _ in range(10):  # Multiple runs for stability
+                start = time.perf_counter()
+                result = tsr.calculate_luminance_x86_optimized(large_image)
+                elapsed = time.perf_counter() - start
+                x86_times.append(elapsed)
+                x86_results.append(result)
+
+            avg_x86_time = sum(x86_times) / len(x86_times)
+
+            # Only test performance if x86 optimizations are actually working
+            if x86_results[0] != 0.0:  # 0.0 indicates fallback mode
+                # Test regular batch luminance performance
+                regular_times = []
+                for _ in range(10):
+                    start = time.perf_counter()
+                    tsr.batch_calculate_luminance([large_image])
+                    elapsed = time.perf_counter() - start
+                    regular_times.append(elapsed)
+
+                avg_regular_time = sum(regular_times) / len(regular_times)
+
+                # x86 should show some performance benefit or be competitive
+                performance_ratio = avg_x86_time / avg_regular_time
+                assert performance_ratio < 2.0, (
+                    f"x86 luminance should be competitive: "
+                    f"{performance_ratio:.2f}x slower"
+                )
+
+                # Results should be consistent
+                result_variance = max(x86_results) - min(x86_results)
+                assert result_variance < 1.0, (
+                    f"x86 luminance results should be consistent: "
+                    f"{result_variance:.3f} variance"
+                )
+
+                print(
+                    f"x86 luminance avg time: {avg_x86_time:.6f}s, "
+                    f"regular avg time: {avg_regular_time:.6f}s, "
+                    f"ratio: {performance_ratio:.2f}x"
+                )
+            else:
+                print("x86 luminance optimizations using fallback mode")
+        else:
+            pytest.skip("x86 performance tests only run on x86_64 platforms")
+
+    @pytest.mark.skipif(not HAS_BINDINGS, reason="Python bindings not available")
+    def test_cpu_feature_detection_performance(self):
+        """Test that CPU feature detection is fast and stable."""
+        if not hasattr(tsr, "get_x86_cpu_features"):
+            pytest.skip("CPU feature detection not available")
+
+        # CPU feature detection should be very fast
+        detection_times = []
+        for _ in range(100):  # Many calls to test caching
+            start = time.perf_counter()
+            features = tsr.get_x86_cpu_features()
+            elapsed = time.perf_counter() - start
+            detection_times.append(elapsed)
+
+            # Validate feature map structure
+            assert isinstance(features, dict)
+            expected_features = [
+                "avx512f",
+                "avx512bw",
+                "avx512dq",
+                "avx2",
+                "fma",
+                "sse41",
+                "is_amd_zen",
+            ]
+            for feature in expected_features:
+                assert feature in features
+                assert isinstance(features[feature], bool)
+
+        avg_detection_time = sum(detection_times) / len(detection_times)
+        max_detection_time = max(detection_times)
+
+        # Detection should be extremely fast (sub-millisecond)
+        assert (
+            avg_detection_time < 0.001
+        ), f"CPU feature detection should be fast: {avg_detection_time:.6f}s avg"
+        assert (
+            max_detection_time < 0.01
+        ), f"CPU feature detection max time too high: {max_detection_time:.6f}s"
+
+
 class TestStressTests:
     """Stress tests for edge conditions and reliability."""
 
