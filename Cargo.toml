@@ -17,7 +17,7 @@ rayon = "1.8"
 wide = {version = "0.7", optional = true}
 
 [features]
-default = ["video", "simd"]
+default = ["video", "simd", "metal"]
 metal = ["dep:metal", "dep:objc"]
 python-bindings = ["pyo3", "numpy"]
 simd = ["wide"]

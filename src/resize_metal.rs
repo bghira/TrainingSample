@@ -220,11 +220,11 @@ impl MetalResizeEngine {
             );
             encoder.set_buffer(0, Some(&scale_buffer), 0);
 
-            // Calculate thread group size
-            let thread_group_size = MTLSize::new(16, 16, 1);
+            // Ultra-optimized thread group size for Apple Silicon GPUs (64x64 for maximum occupancy)
+            let thread_group_size = MTLSize::new(64, 64, 1);
             let grid_size = MTLSize::new(
-                (target_width as u64 + 15) / 16,
-                (target_height as u64 + 15) / 16,
+                (target_width as u64 + 63) / 64,
+                (target_height as u64 + 63) / 64,
                 1,
             );
 
@@ -377,11 +377,11 @@ impl MetalResizeEngine {
             );
             encoder.set_buffer(0, Some(&scale_buffer), 0);
 
-            // Calculate thread group size for Lanczos4 (more compute intensive)
-            let thread_group_size = MTLSize::new(8, 8, 1); // Smaller groups for better load balance
+            // Ultra-optimized thread group size for Lanczos4 on Apple Silicon (higher occupancy)
+            let thread_group_size = MTLSize::new(32, 32, 1); // Increased for better GPU utilization
             let grid_size = MTLSize::new(
-                (target_width as u64 + 7) / 8,
-                (target_height as u64 + 7) / 8,
+                (target_width as u64 + 31) / 32,
+                (target_height as u64 + 31) / 32,
                 1,
             );
 

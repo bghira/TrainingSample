@@ -752,3 +752,206 @@ pub fn resize_lanczos3_ultra_optimized<'py>(
         "Ultra-optimized resize requires SIMD features",
     ))
 }
+
+/// 🚀 Metal GPU-accelerated bilinear resize - should beat Pillow by >>3.3x!
+#[cfg(all(feature = "python-bindings", feature = "metal"))]
+#[pyfunction]
+pub fn resize_bilinear_metal_gpu<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    let img_view = image.as_array();
+    let start = std::time::Instant::now();
+    
+    match crate::resize_metal::MetalResizeEngine::new() {
+        Ok(engine) => {
+            match engine.resize_bilinear_gpu(&img_view, target_width, target_height) {
+                Ok(result) => {
+                    let elapsed = start.elapsed();
+                    let pixels = (img_view.dim().0 * img_view.dim().1) as f64;
+                    let throughput = pixels / elapsed.as_secs_f64() / 1_000_000.0;
+                    
+                    eprintln!(
+                        "🚀 Metal GPU Bilinear: {:.1} MPx/s ({}×{} → {}×{}) in {:.2}ms", 
+                        throughput,
+                        img_view.dim().1, img_view.dim().0,
+                        target_width, target_height,
+                        elapsed.as_secs_f64() * 1000.0
+                    );
+                    
+                    Ok(PyArray3::from_array_bound(py, &result))
+                }
+                Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "Metal GPU resize failed: {}", e
+                ))),
+            }
+        }
+        Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Failed to initialize Metal GPU: {}", e
+        ))),
+    }
+}
+
+#[cfg(all(feature = "python-bindings", not(feature = "metal")))]
+#[pyfunction]
+pub fn resize_bilinear_metal_gpu<'py>(
+    _py: Python<'py>,
+    _image: PyReadonlyArray3<u8>,
+    _target_width: u32,
+    _target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyNotImplementedError::new_err(
+        "Metal GPU acceleration not available (compile with --features metal)",
+    ))
+}
+
+/// 🚀 Metal GPU-accelerated Lanczos4 resize - ultimate quality + speed!
+#[cfg(all(feature = "python-bindings", feature = "metal"))]
+#[pyfunction] 
+pub fn resize_lanczos4_metal_gpu<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    let img_view = image.as_array();
+    let start = std::time::Instant::now();
+    
+    match crate::resize_metal::MetalResizeEngine::new() {
+        Ok(engine) => {
+            match engine.resize_lanczos4_gpu(&img_view, target_width, target_height) {
+                Ok(result) => {
+                    let elapsed = start.elapsed();
+                    let pixels = (img_view.dim().0 * img_view.dim().1) as f64;
+                    let throughput = pixels / elapsed.as_secs_f64() / 1_000_000.0;
+                    
+                    eprintln!(
+                        "🚀 Metal GPU Lanczos4: {:.1} MPx/s ({}×{} → {}×{}) in {:.2}ms",
+                        throughput,
+                        img_view.dim().1, img_view.dim().0,
+                        target_width, target_height,
+                        elapsed.as_secs_f64() * 1000.0
+                    );
+                    
+                    Ok(PyArray3::from_array_bound(py, &result))
+                }
+                Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                    "Metal GPU Lanczos4 resize failed: {}", e
+                ))),
+            }
+        }
+        Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Failed to initialize Metal GPU: {}", e
+        ))),
+    }
+}
+
+#[cfg(all(feature = "python-bindings", not(feature = "metal")))]
+#[pyfunction]
+pub fn resize_lanczos4_metal_gpu<'py>(
+    _py: Python<'py>,
+    _image: PyReadonlyArray3<u8>,
+    _target_width: u32,
+    _target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyNotImplementedError::new_err(
+        "Metal GPU acceleration not available (compile with --features metal)",
+    ))
+}
+
+/// 🚀 LANCIR-inspired cache-optimized resize - targeting OpenCV performance!
+#[cfg(all(feature = "python-bindings", feature = "simd"))]
+#[pyfunction]
+pub fn resize_lanczos3_cache_optimized<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    let img_view = image.as_array();
+    let start = std::time::Instant::now();
+    
+    let resizer = crate::resize_cache_optimized::CacheOptimizedResizer::new();
+    match resizer.resize_lanczos3_cache_optimized(&img_view, target_width, target_height) {
+        Ok((result, metrics)) => {
+            let elapsed = start.elapsed();
+            
+            eprintln!(
+                "🔄 Cache-Optimized Lanczos3: {:.1} MPx/s ({}×{} → {}×{}) in {:.2}ms [batch_size: {}]",
+                metrics.throughput_mpixels_per_sec,
+                img_view.dim().1, img_view.dim().0,
+                target_width, target_height,
+                elapsed.as_secs_f64() * 1000.0,
+                metrics.batch_size.unwrap_or(0)
+            );
+            
+            Ok(PyArray3::from_array_bound(py, &result))
+        }
+        Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "Cache-optimized resize failed: {}", e
+        ))),
+    }
+}
+
+#[cfg(all(feature = "python-bindings", not(feature = "simd")))]
+#[pyfunction]
+pub fn resize_lanczos3_cache_optimized<'py>(
+    _py: Python<'py>,
+    _image: PyReadonlyArray3<u8>,
+    _target_width: u32,
+    _target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyNotImplementedError::new_err(
+        "Cache-optimized resize requires SIMD features",
+    ))
+}
+
+/// 🚀 Intel IPP-inspired resize - TARGET: 4x speedup with weight table caching!
+#[cfg(all(feature = "python-bindings", feature = "simd"))]
+#[pyfunction]
+pub fn resize_lanczos3_ipp_inspired<'py>(
+    py: Python<'py>,
+    image: PyReadonlyArray3<u8>,
+    target_width: u32,
+    target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    let img_view = image.as_array();
+    let start = std::time::Instant::now();
+    
+    let resizer = crate::resize_ipp_inspired::IPPInspiredResizer::new();
+    match resizer.resize_lanczos3_ipp_inspired(&img_view, target_width, target_height) {
+        Ok((result, metrics)) => {
+            let elapsed = start.elapsed();
+            
+            eprintln!(
+                "🚀 IPP-Inspired Lanczos3: {:.1} MPx/s ({}×{} → {}×{}) in {:.2}ms [cache hits: {}, misses: {}]",
+                metrics.throughput_mpixels_per_sec,
+                img_view.dim().1, img_view.dim().0,
+                target_width, target_height,
+                elapsed.as_secs_f64() * 1000.0,
+                metrics.weight_table_hits,
+                metrics.weight_table_misses
+            );
+            
+            Ok(PyArray3::from_array_bound(py, &result))
+        }
+        Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+            "IPP-inspired resize failed: {}", e
+        ))),
+    }
+}
+
+#[cfg(all(feature = "python-bindings", not(feature = "simd")))]
+#[pyfunction]
+pub fn resize_lanczos3_ipp_inspired<'py>(
+    _py: Python<'py>,
+    _image: PyReadonlyArray3<u8>,
+    _target_width: u32,
+    _target_height: u32,
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyNotImplementedError::new_err(
+        "IPP-inspired resize requires SIMD features",
+    ))
+}

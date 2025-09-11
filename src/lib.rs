@@ -34,6 +34,12 @@ pub mod resize_simd_advanced;
 mod resize_metal;
 
 #[cfg(feature = "simd")]
+mod resize_cache_optimized;
+
+#[cfg(feature = "simd")]
+mod resize_ipp_inspired;
+
+#[cfg(feature = "simd")]
 mod format_conversion_simd;
 
 // Python bindings - only when feature is enabled
@@ -94,7 +100,7 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
         m
     )?)?;
 
-    // Ultra-optimized implementations for competitive performance
+    // High-performance optimized implementations (keep the winners!)
     m.add_function(wrap_pyfunction!(
         crate::python_bindings::resize_lanczos3_blocked_optimized,
         m
@@ -107,22 +113,26 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
         crate::python_bindings::resize_lanczos3_adaptive_optimized,
         m
     )?)?;
+    
+    // Metal GPU acceleration - the future!
     m.add_function(wrap_pyfunction!(
-        crate::python_bindings::resize_lanczos3_avx512_ultra_wide,
+        crate::python_bindings::resize_bilinear_metal_gpu,
         m
     )?)?;
     m.add_function(wrap_pyfunction!(
-        crate::python_bindings::resize_lanczos3_neon_ultra_wide,
+        crate::python_bindings::resize_lanczos4_metal_gpu,
         m
     )?)?;
+    
+    // LANCIR-inspired cache-optimized implementation - targeting OpenCV performance!
     m.add_function(wrap_pyfunction!(
-        crate::python_bindings::resize_lanczos3_portable_wide,
+        crate::python_bindings::resize_lanczos3_cache_optimized,
         m
     )?)?;
-
-    // Ultra-optimized implementation targeting OpenCV performance parity
+    
+    // Intel IPP-inspired implementation - TARGET: 4x speedup!
     m.add_function(wrap_pyfunction!(
-        crate::python_bindings::resize_lanczos3_ultra_optimized,
+        crate::python_bindings::resize_lanczos3_ipp_inspired,
         m
     )?)?;
 
