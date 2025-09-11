@@ -120,9 +120,39 @@ same signatures but with `ndarray::Array3<u8>` and `ndarray::Array4<u8>` instead
 - memory efficient batch operations
 - supports both images and videos
 
+## performance
+
+tested on production scale 5120x5120 images (~78MB each) because toy data means nothing:
+
+### luminance calculation
+- single image: **4.7x faster** than numpy
+- batch of 16: **52x faster** than numpy loops
+- throughput: 545 images/sec vs 10.5 images/sec
+
+### image resizing
+- **3.5x faster** than PIL for typical downscaling (5120→512)
+- batch processing scales linearly
+- throughput: 20 images/sec vs 6 images/sec
+
+### real workflows
+- complete pipeline (resize→crop→luminance): **3.1x speedup**
+- 5120x5120 → 1024x1024 → 512x512 → luminance: 0.29s vs 0.90s for batch of 4
+
+### threading reality check
+spoiler: ThreadPoolExecutor won't save you. the rust bindings don't release the GIL as effectively as you'd hope (1.08x speedup vs expected 4x). just use batch processing - it's 6x faster than threading anyway.
+
+### batch sizes that matter
+- luminance: 8-16 images for best throughput/memory balance
+- resizing: 4-8 images optimal
+- memory usage: ~78MB per 5120x5120 image, plan accordingly
+
+tested on apple silicon with 16 cores. your mileage may vary.
+
 ## why not opencv/pil/whatever
 
-because they're slow, don't parallelize properly, or hold the GIL. this uses full parallelism and doesn't care about python threading limitations.
+because they're slow, don't parallelize properly, and then they hold the GIL.
+
+TrainingSample uses full parallelism and doesn't care about python limitations.
 
 ## building from source
 
