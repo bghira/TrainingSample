@@ -154,13 +154,8 @@ impl X86ResizeEngine {
         // AVX-512 can process 16 pixels simultaneously with 32-bit floats
         const AVX512_BATCH: usize = 16;
 
-        // Use work-stealing parallelism optimized for many-core Xeon processors
-        let cores_used = AtomicUsize::new(0);
-
-        // Process rows sequentially for now to avoid complex parallel iterator issues
+        // Process rows sequentially
         for dst_y in 0..dst_height {
-            cores_used.fetch_add(1, Ordering::Relaxed);
-
             let src_y_f = (dst_y as f32 + 0.5) * y_scale - 0.5;
             let src_y = src_y_f.floor() as i32;
             let y_weight = src_y_f - src_y as f32;
@@ -210,8 +205,8 @@ impl X86ResizeEngine {
             }
         }
 
-        self.cores_used
-            .store(cores_used.load(Ordering::Relaxed), Ordering::Relaxed);
+        // Sequential processing uses 1 core
+        self.cores_used.store(1, Ordering::Relaxed);
         Ok(result)
     }
 
@@ -284,8 +279,8 @@ impl X86ResizeEngine {
             }
         }
 
-        self.cores_used
-            .store(cores_used.load(Ordering::Relaxed), Ordering::Relaxed);
+        // Sequential processing uses 1 core
+        self.cores_used.store(1, Ordering::Relaxed);
         Ok(result)
     }
 
@@ -357,8 +352,8 @@ impl X86ResizeEngine {
             }
         }
 
-        self.cores_used
-            .store(cores_used.load(Ordering::Relaxed), Ordering::Relaxed);
+        // Sequential processing uses 1 core
+        self.cores_used.store(1, Ordering::Relaxed);
         Ok(result)
     }
 }
