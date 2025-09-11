@@ -183,7 +183,7 @@ maturin develop --release
 cargo build --release
 ```
 
-requires rust 1.70+ and python 3.9+ if you want the python bindings.
+requires rust 1.70+ and python 3.11+ if you want the python bindings.
 
 ## license
 
