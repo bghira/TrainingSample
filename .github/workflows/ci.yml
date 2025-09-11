@@ -53,13 +53,13 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --features python-bindings,simd,video -- -D warnings
 
     - name: Run tests (no Python bindings)
       run: cargo test --no-default-features --features video
 
-    - name: Compile tests (all features)
-      run: cargo test --all-features --no-run
+    - name: Compile tests (Linux compatible features)
+      run: cargo test --features python-bindings,simd,video --no-run
 
   python-tests:
     name: Python Tests
@@ -92,17 +92,23 @@ jobs:
       if: runner.os == 'Windows'
       run: pip install maturin
 
-    - name: Build Python package (Linux/macOS)
-      if: runner.os != 'Windows'
+    - name: Build Python package (Linux)
+      if: runner.os == 'Linux'
       run: |
         mkdir -p dist
-        maturin build --release --out dist
+        maturin build --release --out dist --no-default-features --features python-bindings,simd
+
+    - name: Build Python package (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        mkdir -p dist
+        maturin build --release --out dist --no-default-features --features python-bindings,simd,metal
 
     - name: Build Python package (Windows)
       if: runner.os == 'Windows'
       run: |
         if not exist dist mkdir dist
-        maturin build --release --out dist
+        maturin build --release --out dist --no-default-features --features python-bindings,simd
 
     - name: Install built package (Linux/macOS)
       if: runner.os != 'Windows'
@@ -186,15 +192,15 @@ jobs:
 
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
-      run: maturin build --release --out dist
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd
 
-    - name: Build wheels (macOS - no video features)
+    - name: Build wheels (macOS)
       if: runner.os == 'macOS'
-      run: maturin build --release --out dist --no-default-features --features python-bindings
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,metal
 
-    - name: Build wheels (Windows - no video features)
+    - name: Build wheels (Windows)
       if: runner.os == 'Windows'
-      run: maturin build --release --out dist --no-default-features --features python-bindings
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
