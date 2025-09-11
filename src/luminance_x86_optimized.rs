@@ -391,16 +391,16 @@ pub fn calculate_luminance_x86_parallel(image: &ArrayView3<u8>) -> Result<f64> {
     let pixel_count = (height * width) as f64;
 
     // Process rows in parallel, each using the best SIMD instructions
-    let total: f64 = (0..height)
+    let total: Result<f64> = (0..height)
         .into_par_iter()
         .map(|h| {
             let row = image.index_axis(ndarray::Axis(0), h);
             let row_3d = row.insert_axis(ndarray::Axis(0));
             calculate_luminance_x86_optimized(&row_3d.view())
         })
-        .sum::<f64>()
-        * (width as f64);
+        .try_reduce(|| 0.0, |a, b| Ok(a + b));
 
+    let total = total? * (width as f64);
     Ok(total / pixel_count)
 }
 
@@ -431,7 +431,7 @@ mod tests {
 
         #[cfg(all(feature = "simd", target_arch = "x86_64"))]
         {
-            let result = calculate_luminance_x86_optimized(&_image.view());
+            let result = calculate_luminance_x86_optimized(&_image.view()).unwrap();
             // Should be close to 128 * luminance coefficients
             let expected = 128.0 * (0.299 + 0.587 + 0.114);
             assert!((result - expected).abs() < 1.0);
