@@ -193,6 +193,7 @@ mod x86_optimization_tests {
     }
 
     #[test]
+    #[cfg(feature = "simd")]
     fn test_x86_fallback_functions_on_non_x86() {
         use crate::luminance_x86_optimized::{
             calculate_luminance_x86_optimized, calculate_luminance_x86_parallel,
