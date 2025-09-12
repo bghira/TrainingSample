@@ -35,6 +35,9 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev llvm-dev
+        # Set up LLVM environment for opencv-rust bindings
+        echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
 
     - name: Install Python dependencies
       run: |
