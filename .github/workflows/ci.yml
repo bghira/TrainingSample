@@ -240,10 +240,10 @@ jobs:
       run: |
         # Install OpenCV and LLVM via Homebrew
         brew install opencv llvm
-        # Set up LLVM environment for opencv-rust bindings
-        echo "LIBCLANG_PATH=/opt/homebrew/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/opt/homebrew/bin/llvm-config" >> $GITHUB_ENV
-        echo "DYLD_LIBRARY_PATH=/opt/homebrew/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Set up LLVM environment for opencv-rust bindings (keg-only installation)
+        echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
+        echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
         # Set up OpenCV environment
         echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
         echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
