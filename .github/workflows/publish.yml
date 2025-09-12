@@ -48,40 +48,6 @@ jobs:
         name: wheels-linux-${{ matrix.target }}
         path: dist
 
-  windows:
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        target: [x64]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        architecture: ${{ matrix.target }}
-
-    - name: Install OpenCV (Windows)
-      run: |
-        # Install OpenCV via vcpkg for static linking
-        vcpkg install opencv:x64-windows-static
-        echo "OPENCV_LINK_LIBS=opencv_core4,opencv_imgproc4,opencv_imgcodecs4" >> $env:GITHUB_ENV
-        echo "OPENCV_LINK_PATHS=C:\vcpkg\installed\x64-windows-static\lib" >> $env:GITHUB_ENV
-        echo "OPENCV_INCLUDE_PATHS=C:\vcpkg\installed\x64-windows-static\include" >> $env:GITHUB_ENV
-
-    - name: Build wheels
-      uses: PyO3/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv
-        sccache: 'true'
-      env:
-        # Use stable ABI for forward compatibility
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-windows-${{ matrix.target }}
-        path: dist
 
   macos:
     runs-on: macos-latest
@@ -140,7 +106,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [linux, windows, macos, sdist]
+    needs: [linux, macos, sdist]
     steps:
     - uses: actions/download-artifact@v4
       with:
