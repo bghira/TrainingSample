@@ -53,13 +53,13 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Run clippy
-      run: cargo clippy --all-targets --features python-bindings,simd,opencv -- -D warnings
+      run: cargo clippy --all-targets --no-default-features --features python-bindings,simd,opencv -- -D warnings
 
     - name: Run tests (no Python bindings)
       run: cargo test --no-default-features --features simd
 
     - name: Compile tests (Linux compatible features)
-      run: cargo test --features python-bindings,simd,opencv --no-run
+      run: cargo test --no-default-features --features python-bindings,simd,opencv --no-run
 
   python-tests:
     name: Python Tests

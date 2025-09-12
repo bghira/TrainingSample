@@ -45,7 +45,7 @@ jobs:
     - name: Build Rust library with Python bindings
       run: |
         # Build with optimizations and all relevant features
-        maturin develop --release --features "python-bindings,simd,opencv"
+        maturin develop --release --no-default-features --features "python-bindings,simd,opencv"
 
     - name: Run competitive benchmarks
       run: |
