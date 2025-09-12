@@ -34,7 +34,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y libopencv-dev python3-opencv
+        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev
 
     - name: Install Python dependencies
       run: |
@@ -45,7 +45,7 @@ jobs:
     - name: Build Rust library with Python bindings
       run: |
         # Build with optimizations and all relevant features
-        maturin develop --release --features "python-bindings,simd,video"
+        maturin develop --release --features "python-bindings,simd,opencv"
 
     - name: Run competitive benchmarks
       run: |

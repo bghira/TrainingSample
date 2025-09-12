@@ -20,10 +20,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
@@ -53,13 +53,13 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Run clippy
-      run: cargo clippy --all-targets --features python-bindings,simd,video -- -D warnings
+      run: cargo clippy --all-targets --features python-bindings,simd,opencv -- -D warnings
 
     - name: Run tests (no Python bindings)
-      run: cargo test --no-default-features --features video
+      run: cargo test --no-default-features --features simd
 
     - name: Compile tests (Linux compatible features)
-      run: cargo test --features python-bindings,simd,video --no-run
+      run: cargo test --features python-bindings,simd,opencv --no-run
 
   python-tests:
     name: Python Tests
@@ -71,10 +71,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -96,7 +96,7 @@ jobs:
       if: runner.os == 'Linux'
       run: |
         mkdir -p dist
-        maturin build --release --out dist --no-default-features --features python-bindings,simd
+        maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
     - name: Build Python package (macOS)
       if: runner.os == 'macOS'
@@ -132,10 +132,10 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -192,7 +192,7 @@ jobs:
 
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
     - name: Build wheels (macOS)
       if: runner.os == 'macOS'
