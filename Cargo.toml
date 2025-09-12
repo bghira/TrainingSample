@@ -18,7 +18,7 @@ rayon = "1.8"
 wide = {version = "0.7", optional = true}
 
 [features]
-default = ["simd", "metal"]
+default = ["simd"]
 metal = ["dep:metal", "dep:objc"]
 opencv = ["dep:opencv"]
 python-bindings = ["pyo3", "numpy"]
