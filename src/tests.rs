@@ -461,3 +461,42 @@ mod edge_case_tests {
         assert_eq!(result.dim(), (100, 100, 3));
     }
 }
+
+// OpenCV specific tests
+#[cfg(test)]
+mod opencv_tests {
+    use super::*;
+    use crate::opencv_ops::OpenCVBatchProcessor;
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_opencv_batch_resize() {
+        let processor = OpenCVBatchProcessor::new();
+        let test_image = create_test_image();
+
+        let images = vec![test_image.view()];
+        let target_sizes = vec![(128, 128)];
+
+        let results = processor.batch_resize_lanczos4(&images, &target_sizes);
+        assert!(results.is_ok());
+
+        let resized = results.unwrap();
+        assert_eq!(resized.len(), 1);
+        assert_eq!(resized[0].dim(), (128, 128, 3));
+    }
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_opencv_batch_luminance() {
+        let processor = OpenCVBatchProcessor::new();
+        let test_image = create_test_image();
+
+        let images = vec![test_image.view()];
+        let results = processor.batch_calculate_luminance_opencv(&images);
+        assert!(results.is_ok());
+
+        let luminance = results.unwrap();
+        assert_eq!(luminance.len(), 1);
+        assert!(luminance[0] >= 0.0 && luminance[0] <= 255.0);
+    }
+}

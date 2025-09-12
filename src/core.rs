@@ -116,12 +116,13 @@ pub fn batch_resize_image_arrays(
     images: &[Array3<u8>],
     _target_sizes: &[(u32, u32)],
 ) -> Vec<Result<Array3<u8>>> {
-    vec![
-        Err(anyhow::anyhow!(
-            "OpenCV feature not enabled. Rebuild with --features opencv"
-        ));
-        images.len()
-    ]
+    (0..images.len())
+        .map(|_| {
+            Err(anyhow::anyhow!(
+                "OpenCV feature not enabled. Rebuild with --features opencv"
+            ))
+        })
+        .collect()
 }
 
 #[cfg(feature = "opencv")]
@@ -150,12 +151,13 @@ pub fn batch_resize_video_arrays(
     videos: &[ndarray::Array4<u8>],
     _target_sizes: &[(u32, u32)],
 ) -> Vec<Result<ndarray::Array4<u8>>> {
-    vec![
-        Err(anyhow::anyhow!(
-            "OpenCV feature not enabled. Rebuild with --features opencv"
-        ));
-        videos.len()
-    ]
+    (0..videos.len())
+        .map(|_| {
+            Err(anyhow::anyhow!(
+                "OpenCV feature not enabled. Rebuild with --features opencv"
+            ))
+        })
+        .collect()
 }
 
 pub fn batch_random_crop_image_arrays(
