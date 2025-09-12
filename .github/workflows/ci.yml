@@ -24,17 +24,15 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
-        # Install the exact packages that provide libclang.so AND llvm-config
-        sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang1-14 libclang-cpp14
-        # Find where libclang actually is
-        echo "Searching for libclang files:"
-        find /usr/lib -name "libclang*.so*" 2>/dev/null
-        # Set the correct path based on where Ubuntu puts LLVM 14 files
-        echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-14/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify files exist in the LLVM-specific directory
-        ls -la /usr/lib/llvm-14/lib/libclang.so* || echo "Not in llvm-14/lib either"
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
@@ -86,17 +84,15 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
-        # Install the exact packages that provide libclang.so AND llvm-config
-        sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang1-14 libclang-cpp14
-        # Find where libclang actually is
-        echo "Searching for libclang files:"
-        find /usr/lib -name "libclang*.so*" 2>/dev/null
-        # Set the correct path based on where Ubuntu puts LLVM 14 files
-        echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-14/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify files exist in the LLVM-specific directory
-        ls -la /usr/lib/llvm-14/lib/libclang.so* || echo "Not in llvm-14/lib either"
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -158,17 +154,15 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
-        # Install the exact packages that provide libclang.so AND llvm-config
-        sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang1-14 libclang-cpp14
-        # Find where libclang actually is
-        echo "Searching for libclang files:"
-        find /usr/lib -name "libclang*.so*" 2>/dev/null
-        # Set the correct path based on where Ubuntu puts LLVM 14 files
-        echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-14/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify files exist in the LLVM-specific directory
-        ls -la /usr/lib/llvm-14/lib/libclang.so* || echo "Not in llvm-14/lib either"
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Set up Python
       uses: actions/setup-python@v4
