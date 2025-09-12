@@ -178,12 +178,14 @@ pub fn calculate_luminance_portable_simd(image: &ArrayView3<u8>) -> (f64, Lumina
     }
 
     let result = total.reduce_add() as f64 / pixel_count as f64;
+    let elapsed_nanos = start.elapsed().as_nanos() as u64;
     let metrics = LuminanceMetrics::new(
         pixel_count,
-        start.elapsed().as_nanos() as u64,
+        elapsed_nanos,
         simd_width,
         "portable_simd_f32x8",
     );
+    
 
     (result, metrics)
 }
@@ -192,6 +194,8 @@ pub fn calculate_luminance_portable_simd(image: &ArrayView3<u8>) -> (f64, Lumina
 #[cfg(all(feature = "simd", target_arch = "x86_64"))]
 #[target_feature(enable = "avx2,fma")]
 unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> (f64, LuminanceMetrics) {
+    use std::arch::x86_64::*;
+    
     let start = std::time::Instant::now();
     let (height, width, channels) = image.dim();
 
@@ -199,58 +203,65 @@ unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> (f64, Luminanc
         return calculate_luminance_scalar_tracked(image);
     }
 
-    // AVX2 constants (8 floats)
+    // Check if data is contiguous for optimal performance
+    if let Some(data) = image.as_slice() {
+        return calculate_luminance_avx2_fma_contiguous(data, width, height);
+    }
+
+    // Fallback for non-contiguous data - optimized FMA version
     let r_coeff = _mm256_set1_ps(0.299);
     let g_coeff = _mm256_set1_ps(0.587);
     let b_coeff = _mm256_set1_ps(0.114);
+    let zero = _mm256_setzero_ps();
     let mut total = _mm256_setzero_ps();
 
     let pixel_count = height * width;
     let simd_width = 8;
-    let simd_chunks = width / simd_width;
 
     for h in 0..height {
-        for chunk in 0..simd_chunks {
-            let base_w = chunk * simd_width;
-
-            // Load 8 RGB pixels with efficient memory access
-            let mut r_vals = [0.0f32; 8];
-            let mut g_vals = [0.0f32; 8];
-            let mut b_vals = [0.0f32; 8];
-
-            // Load pixel data with bounds checking
-            for i in 0..simd_width.min(width - base_w) {
-                let w = base_w + i;
-                r_vals[i] = image[[h, w, 0]] as f32;
-                g_vals[i] = image[[h, w, 1]] as f32;
-                b_vals[i] = image[[h, w, 2]] as f32;
-            }
+        let mut w = 0;
+        while w + simd_width <= width {
+            // Load 8 RGB pixels directly - much more efficient than scalar loops
+            let r_vals = [
+                image[[h, w, 0]] as f32, image[[h, w + 1, 0]] as f32,
+                image[[h, w + 2, 0]] as f32, image[[h, w + 3, 0]] as f32,
+                image[[h, w + 4, 0]] as f32, image[[h, w + 5, 0]] as f32,
+                image[[h, w + 6, 0]] as f32, image[[h, w + 7, 0]] as f32,
+            ];
+            let g_vals = [
+                image[[h, w, 1]] as f32, image[[h, w + 1, 1]] as f32,
+                image[[h, w + 2, 1]] as f32, image[[h, w + 3, 1]] as f32,
+                image[[h, w + 4, 1]] as f32, image[[h, w + 5, 1]] as f32,
+                image[[h, w + 6, 1]] as f32, image[[h, w + 7, 1]] as f32,
+            ];
+            let b_vals = [
+                image[[h, w, 2]] as f32, image[[h, w + 1, 2]] as f32,
+                image[[h, w + 2, 2]] as f32, image[[h, w + 3, 2]] as f32,
+                image[[h, w + 4, 2]] as f32, image[[h, w + 5, 2]] as f32,
+                image[[h, w + 6, 2]] as f32, image[[h, w + 7, 2]] as f32,
+            ];
 
             let r_vec = _mm256_loadu_ps(r_vals.as_ptr());
             let g_vec = _mm256_loadu_ps(g_vals.as_ptr());
             let b_vec = _mm256_loadu_ps(b_vals.as_ptr());
 
-            // FMA instructions for better performance and precision
-            let luminance = _mm256_fmadd_ps(
-                r_vec,
-                r_coeff,
-                _mm256_fmadd_ps(g_vec, g_coeff, _mm256_mul_ps(b_vec, b_coeff)),
-            );
+            // Ultra-efficient FMA chain: zero + r*coeff + g*coeff + b*coeff
+            let luminance = _mm256_fmadd_ps(r_vec, r_coeff,
+                _mm256_fmadd_ps(g_vec, g_coeff, 
+                    _mm256_fmadd_ps(b_vec, b_coeff, zero)));
 
             total = _mm256_add_ps(total, luminance);
+            w += simd_width;
         }
 
-        // Handle remainder pixels (scalar addition)
-        for w in (simd_chunks * simd_width)..width {
+        // Handle remainder pixels
+        while w < width {
             let r = image[[h, w, 0]] as f32;
             let g = image[[h, w, 1]] as f32;
             let b = image[[h, w, 2]] as f32;
             let lum = 0.299 * r + 0.587 * g + 0.114 * b;
-            // Add scalar to first lane only
-            total = _mm256_add_ps(
-                total,
-                _mm256_setr_ps(lum, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
-            );
+            total = _mm256_add_ps(total, _mm256_setr_ps(lum, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+            w += 1;
         }
     }
 
@@ -262,9 +273,84 @@ unsafe fn calculate_luminance_avx2_fma(image: &ArrayView3<u8>) -> (f64, Luminanc
         pixel_count,
         start.elapsed().as_nanos() as u64,
         simd_width,
-        "avx2_fma",
+        "avx2_fma_optimized",
     );
 
+    (result, metrics)
+}
+
+/// Ultra-high-performance AVX2 FMA implementation for contiguous RGB data
+#[cfg(all(feature = "simd", target_arch = "x86_64"))]
+#[target_feature(enable = "avx2,fma")]
+unsafe fn calculate_luminance_avx2_fma_contiguous(data: &[u8], width: usize, height: usize) -> (f64, LuminanceMetrics) {
+    use std::arch::x86_64::*;
+    
+    let start = std::time::Instant::now();
+    let pixel_count = height * width;
+    
+    // AVX2 constants for luminance calculation
+    let r_coeff = _mm256_set1_ps(0.299);
+    let g_coeff = _mm256_set1_ps(0.587);
+    let b_coeff = _mm256_set1_ps(0.114);
+    let zero = _mm256_setzero_ps();
+    let mut total = _mm256_setzero_ps();
+    
+    let mut i = 0;
+    let pixels_per_iteration = 8;
+    let bytes_per_iteration = pixels_per_iteration * 3; // 24 bytes = 8 RGB pixels
+    
+    // Process 8 RGB pixels at a time (24 bytes)
+    while i + bytes_per_iteration <= data.len() {
+        // Extract RGB values from interleaved data
+        let r_vals = [
+            data[i] as f32, data[i + 3] as f32, data[i + 6] as f32, data[i + 9] as f32,
+            data[i + 12] as f32, data[i + 15] as f32, data[i + 18] as f32, data[i + 21] as f32,
+        ];
+        let g_vals = [
+            data[i + 1] as f32, data[i + 4] as f32, data[i + 7] as f32, data[i + 10] as f32,
+            data[i + 13] as f32, data[i + 16] as f32, data[i + 19] as f32, data[i + 22] as f32,
+        ];
+        let b_vals = [
+            data[i + 2] as f32, data[i + 5] as f32, data[i + 8] as f32, data[i + 11] as f32,
+            data[i + 14] as f32, data[i + 17] as f32, data[i + 20] as f32, data[i + 23] as f32,
+        ];
+        
+        let r_vec = _mm256_loadu_ps(r_vals.as_ptr());
+        let g_vec = _mm256_loadu_ps(g_vals.as_ptr());
+        let b_vec = _mm256_loadu_ps(b_vals.as_ptr());
+        
+        // Ultra-efficient FMA chain for luminance calculation
+        let luminance = _mm256_fmadd_ps(r_vec, r_coeff,
+            _mm256_fmadd_ps(g_vec, g_coeff, 
+                _mm256_fmadd_ps(b_vec, b_coeff, zero)));
+        
+        total = _mm256_add_ps(total, luminance);
+        i += bytes_per_iteration;
+    }
+    
+    // Handle remainder pixels
+    while i + 3 <= data.len() {
+        let r = data[i] as f32;
+        let g = data[i + 1] as f32;
+        let b = data[i + 2] as f32;
+        let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        total = _mm256_add_ps(total, _mm256_setr_ps(lum, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0));
+        i += 3;
+    }
+    
+    // Horizontal sum of AVX2 register
+    let sum_array: [f32; 8] = std::mem::transmute(total);
+    let result = sum_array.iter().sum::<f32>() as f64 / pixel_count as f64;
+    
+    let elapsed_nanos = start.elapsed().as_nanos() as u64;
+    let metrics = LuminanceMetrics::new(
+        pixel_count,
+        elapsed_nanos,
+        8,
+        "avx2_fma_contiguous",
+    );
+    
     (result, metrics)
 }
 
@@ -289,21 +375,27 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> (f64, LuminanceMet
     let simd_chunks = width / simd_width;
 
     for h in 0..height {
-        for chunk in 0..simd_chunks {
-            let base_w = chunk * simd_width;
-
-            // Simple scalar loading for now - still faster than the array approach
-            let mut r_vals = [0.0f32; 8];
-            let mut g_vals = [0.0f32; 8];
-            let mut b_vals = [0.0f32; 8];
-
-            // Load pixel data directly using faster indexing
-            for i in 0..simd_width.min(width - base_w) {
-                let w = base_w + i;
-                r_vals[i] = image[[h, w, 0]] as f32;
-                g_vals[i] = image[[h, w, 1]] as f32;
-                b_vals[i] = image[[h, w, 2]] as f32;
-            }
+        let mut w = 0;
+        while w + simd_width <= width {
+            // Direct pixel loading - more efficient than scalar loops
+            let r_vals = [
+                image[[h, w, 0]] as f32, image[[h, w + 1, 0]] as f32,
+                image[[h, w + 2, 0]] as f32, image[[h, w + 3, 0]] as f32,
+                image[[h, w + 4, 0]] as f32, image[[h, w + 5, 0]] as f32,
+                image[[h, w + 6, 0]] as f32, image[[h, w + 7, 0]] as f32,
+            ];
+            let g_vals = [
+                image[[h, w, 1]] as f32, image[[h, w + 1, 1]] as f32,
+                image[[h, w + 2, 1]] as f32, image[[h, w + 3, 1]] as f32,
+                image[[h, w + 4, 1]] as f32, image[[h, w + 5, 1]] as f32,
+                image[[h, w + 6, 1]] as f32, image[[h, w + 7, 1]] as f32,
+            ];
+            let b_vals = [
+                image[[h, w, 2]] as f32, image[[h, w + 1, 2]] as f32,
+                image[[h, w + 2, 2]] as f32, image[[h, w + 3, 2]] as f32,
+                image[[h, w + 4, 2]] as f32, image[[h, w + 5, 2]] as f32,
+                image[[h, w + 6, 2]] as f32, image[[h, w + 7, 2]] as f32,
+            ];
 
             let r_vec = _mm256_loadu_ps(r_vals.as_ptr());
             let g_vec = _mm256_loadu_ps(g_vals.as_ptr());
@@ -315,10 +407,11 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> (f64, LuminanceMet
             );
 
             total = _mm256_add_ps(total, luminance);
+            w += simd_width;
         }
 
         // Handle remainder pixels (scalar addition)
-        for w in (simd_chunks * simd_width)..width {
+        while w < width {
             let r = image[[h, w, 0]] as f32;
             let g = image[[h, w, 1]] as f32;
             let b = image[[h, w, 2]] as f32;
@@ -328,6 +421,7 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> (f64, LuminanceMet
                 total,
                 _mm256_setr_ps(lum, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0),
             );
+            w += 1;
         }
     }
 
@@ -365,18 +459,21 @@ unsafe fn calculate_luminance_sse41(image: &ArrayView3<u8>) -> (f64, LuminanceMe
     let simd_chunks = width / simd_width;
 
     for h in 0..height {
-        for chunk in 0..simd_chunks {
-            let base_w = chunk * simd_width;
-
-            let mut r_vals = [0.0f32; 4];
-            let mut g_vals = [0.0f32; 4];
-            let mut b_vals = [0.0f32; 4];
-
-            for i in 0..simd_width {
-                r_vals[i] = image[[h, base_w + i, 0]] as f32;
-                g_vals[i] = image[[h, base_w + i, 1]] as f32;
-                b_vals[i] = image[[h, base_w + i, 2]] as f32;
-            }
+        let mut w = 0;
+        while w + simd_width <= width {
+            // Direct pixel loading - more efficient than scalar loops
+            let r_vals = [
+                image[[h, w, 0]] as f32, image[[h, w + 1, 0]] as f32,
+                image[[h, w + 2, 0]] as f32, image[[h, w + 3, 0]] as f32,
+            ];
+            let g_vals = [
+                image[[h, w, 1]] as f32, image[[h, w + 1, 1]] as f32,
+                image[[h, w + 2, 1]] as f32, image[[h, w + 3, 1]] as f32,
+            ];
+            let b_vals = [
+                image[[h, w, 2]] as f32, image[[h, w + 1, 2]] as f32,
+                image[[h, w + 2, 2]] as f32, image[[h, w + 3, 2]] as f32,
+            ];
 
             let r_vec = _mm_loadu_ps(r_vals.as_ptr());
             let g_vec = _mm_loadu_ps(g_vals.as_ptr());
@@ -388,16 +485,18 @@ unsafe fn calculate_luminance_sse41(image: &ArrayView3<u8>) -> (f64, LuminanceMe
             );
 
             total = _mm_add_ps(total, luminance);
+            w += simd_width;
         }
 
         // Handle remainder pixels (scalar addition)
-        for w in (simd_chunks * simd_width)..width {
+        while w < width {
             let r = image[[h, w, 0]] as f32;
             let g = image[[h, w, 1]] as f32;
             let b = image[[h, w, 2]] as f32;
             let lum = 0.299 * r + 0.587 * g + 0.114 * b;
             // Add scalar to first lane only
             total = _mm_add_ps(total, _mm_setr_ps(lum, 0.0, 0.0, 0.0));
+            w += 1;
         }
     }
 
@@ -425,6 +524,12 @@ unsafe fn calculate_luminance_neon(image: &ArrayView3<u8>) -> (f64, LuminanceMet
         return calculate_luminance_scalar_tracked(image);
     }
 
+    // Check if data is contiguous for optimal performance
+    if let Some(data) = image.as_slice() {
+        return calculate_luminance_neon_contiguous(data, width, height);
+    }
+
+    // Fallback for non-contiguous data
     let r_coeff = vdupq_n_f32(0.299);
     let g_coeff = vdupq_n_f32(0.587);
     let b_coeff = vdupq_n_f32(0.114);
@@ -432,21 +537,30 @@ unsafe fn calculate_luminance_neon(image: &ArrayView3<u8>) -> (f64, LuminanceMet
 
     let pixel_count = height * width;
     let simd_width = 4;
-    let simd_chunks = width / simd_width;
 
+    // Process pixels in batches of 4
     for h in 0..height {
-        for chunk in 0..simd_chunks {
-            let base_w = chunk * simd_width;
-
-            let mut r_vals = [0.0f32; 4];
-            let mut g_vals = [0.0f32; 4];
-            let mut b_vals = [0.0f32; 4];
-
-            for i in 0..simd_width {
-                r_vals[i] = image[[h, base_w + i, 0]] as f32;
-                g_vals[i] = image[[h, base_w + i, 1]] as f32;
-                b_vals[i] = image[[h, base_w + i, 2]] as f32;
-            }
+        let mut w = 0;
+        while w + simd_width <= width {
+            // Load 4 RGB pixels directly - much more efficient
+            let r_vals = [
+                image[[h, w, 0]] as f32,
+                image[[h, w + 1, 0]] as f32,
+                image[[h, w + 2, 0]] as f32,
+                image[[h, w + 3, 0]] as f32,
+            ];
+            let g_vals = [
+                image[[h, w, 1]] as f32,
+                image[[h, w + 1, 1]] as f32,
+                image[[h, w + 2, 1]] as f32,
+                image[[h, w + 3, 1]] as f32,
+            ];
+            let b_vals = [
+                image[[h, w, 2]] as f32,
+                image[[h, w + 1, 2]] as f32,
+                image[[h, w + 2, 2]] as f32,
+                image[[h, w + 3, 2]] as f32,
+            ];
 
             let r_vec = vld1q_f32(r_vals.as_ptr());
             let g_vec = vld1q_f32(g_vals.as_ptr());
@@ -457,10 +571,11 @@ unsafe fn calculate_luminance_neon(image: &ArrayView3<u8>) -> (f64, LuminanceMet
             let luminance = vmlaq_f32(luminance, b_vec, b_coeff);
 
             total = vaddq_f32(total, luminance);
+            w += simd_width;
         }
 
         // Handle remainder pixels (scalar addition)
-        for w in (simd_chunks * simd_width)..width {
+        while w < width {
             let r = image[[h, w, 0]] as f32;
             let g = image[[h, w, 1]] as f32;
             let b = image[[h, w, 2]] as f32;
@@ -468,6 +583,7 @@ unsafe fn calculate_luminance_neon(image: &ArrayView3<u8>) -> (f64, LuminanceMet
             // Add scalar to first lane only
             let lum_vec = vsetq_lane_f32(lum, vdupq_n_f32(0.0), 0);
             total = vaddq_f32(total, lum_vec);
+            w += 1;
         }
     }
 
@@ -475,13 +591,140 @@ unsafe fn calculate_luminance_neon(image: &ArrayView3<u8>) -> (f64, LuminanceMet
     let sum_array: [f32; 4] = std::mem::transmute(total);
     let result = sum_array.iter().sum::<f32>() as f64 / pixel_count as f64;
 
+    let elapsed_nanos = start.elapsed().as_nanos() as u64;
     let metrics = LuminanceMetrics::new(
         pixel_count,
-        start.elapsed().as_nanos() as u64,
+        elapsed_nanos,
         simd_width,
         "neon",
     );
+    
 
+    (result, metrics)
+}
+
+/// Ultra-high-performance NEON implementation for contiguous RGB data with maximum FMA optimization
+#[cfg(all(feature = "simd", target_arch = "aarch64"))]
+#[target_feature(enable = "neon")]
+unsafe fn calculate_luminance_neon_contiguous(data: &[u8], width: usize, height: usize) -> (f64, LuminanceMetrics) {
+    use std::arch::aarch64::*;
+    
+    let start = std::time::Instant::now();
+    let pixel_count = height * width;
+    
+    // Use optimized coefficients scaled for u16 intermediate calculations
+    let r_coeff = vdupq_n_f32(0.299);
+    let g_coeff = vdupq_n_f32(0.587); 
+    let b_coeff = vdupq_n_f32(0.114);
+    
+    let mut total = vdupq_n_f64(0.0); // Use f64 accumulator for better precision
+    
+    let mut i = 0;
+    let pixels_per_iteration = 16; // Process 16 pixels at once
+    let bytes_per_iteration = pixels_per_iteration * 3; // 48 bytes
+    
+    // Ultra-aggressive SIMD loop - process 16 RGB pixels per iteration with max FMA efficiency
+    while i + bytes_per_iteration <= data.len() {
+        // Load 48 bytes (16 RGB pixels) with deinterleaving
+        let rgb = vld3q_u8(data.as_ptr().add(i)); // Loads R0-15, G0-15, B0-15
+        
+        // Process first 8 pixels with minimal intermediate storage
+        let r_u16_lo = vmovl_u8(vget_low_u8(rgb.0));
+        let g_u16_lo = vmovl_u8(vget_low_u8(rgb.1));  
+        let b_u16_lo = vmovl_u8(vget_low_u8(rgb.2));
+        
+        // Direct FMA calculation with immediate accumulation
+        let zero = vdupq_n_f32(0.0);
+        
+        // First 4 pixels  
+        let lum1 = vmlaq_f32(vmlaq_f32(vmlaq_f32(zero,
+            vcvtq_f32_u32(vmovl_u16(vget_low_u16(r_u16_lo))), r_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_low_u16(g_u16_lo))), g_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_low_u16(b_u16_lo))), b_coeff);
+        
+        // Second 4 pixels
+        let lum2 = vmlaq_f32(vmlaq_f32(vmlaq_f32(zero,
+            vcvtq_f32_u32(vmovl_u16(vget_high_u16(r_u16_lo))), r_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_high_u16(g_u16_lo))), g_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_high_u16(b_u16_lo))), b_coeff);
+        
+        // Immediate f64 accumulation
+        total = vaddq_f64(total, vcvt_f64_f32(vget_low_f32(lum1)));
+        total = vaddq_f64(total, vcvt_high_f64_f32(lum1));
+        total = vaddq_f64(total, vcvt_f64_f32(vget_low_f32(lum2)));
+        total = vaddq_f64(total, vcvt_high_f64_f32(lum2));
+        
+        // Process next 8 pixels (9-16)
+        let r_u16_hi = vmovl_u8(vget_high_u8(rgb.0));
+        let g_u16_hi = vmovl_u8(vget_high_u8(rgb.1));
+        let b_u16_hi = vmovl_u8(vget_high_u8(rgb.2));
+        
+        // Third 4 pixels
+        let lum3 = vmlaq_f32(vmlaq_f32(vmlaq_f32(zero,
+            vcvtq_f32_u32(vmovl_u16(vget_low_u16(r_u16_hi))), r_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_low_u16(g_u16_hi))), g_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_low_u16(b_u16_hi))), b_coeff);
+        
+        // Fourth 4 pixels  
+        let lum4 = vmlaq_f32(vmlaq_f32(vmlaq_f32(zero,
+            vcvtq_f32_u32(vmovl_u16(vget_high_u16(r_u16_hi))), r_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_high_u16(g_u16_hi))), g_coeff),
+            vcvtq_f32_u32(vmovl_u16(vget_high_u16(b_u16_hi))), b_coeff);
+        
+        // Immediate accumulation
+        total = vaddq_f64(total, vcvt_f64_f32(vget_low_f32(lum3)));
+        total = vaddq_f64(total, vcvt_high_f64_f32(lum3));
+        total = vaddq_f64(total, vcvt_f64_f32(vget_low_f32(lum4)));
+        total = vaddq_f64(total, vcvt_high_f64_f32(lum4));
+        
+        i += bytes_per_iteration;
+    }
+    
+    // Process remaining pixels 4 at a time
+    while i + 12 <= data.len() {
+        let r_vals = [data[i] as f32, data[i + 3] as f32, data[i + 6] as f32, data[i + 9] as f32];
+        let g_vals = [data[i + 1] as f32, data[i + 4] as f32, data[i + 7] as f32, data[i + 10] as f32];
+        let b_vals = [data[i + 2] as f32, data[i + 5] as f32, data[i + 8] as f32, data[i + 11] as f32];
+        
+        let r_vec = vld1q_f32(r_vals.as_ptr());
+        let g_vec = vld1q_f32(g_vals.as_ptr());
+        let b_vec = vld1q_f32(b_vals.as_ptr());
+        
+        let zero = vdupq_n_f32(0.0);
+        let luminance = vmlaq_f32(vmlaq_f32(vmlaq_f32(zero, r_vec, r_coeff), g_vec, g_coeff), b_vec, b_coeff);
+        let lum_f64_1 = vcvt_f64_f32(vget_low_f32(luminance));
+        let lum_f64_2 = vcvt_high_f64_f32(luminance);
+        
+        total = vaddq_f64(total, lum_f64_1);
+        total = vaddq_f64(total, lum_f64_2);
+        
+        i += 12;
+    }
+    
+    // Handle final remainder pixels
+    while i + 3 <= data.len() {
+        let r = data[i] as f64;
+        let g = data[i + 1] as f64;
+        let b = data[i + 2] as f64;
+        let lum = 0.299 * r + 0.587 * g + 0.114 * b;
+        
+        let lum_vec = vsetq_lane_f64(lum, vdupq_n_f64(0.0), 0);
+        total = vaddq_f64(total, lum_vec);
+        i += 3;
+    }
+    
+    // Horizontal sum of f64 NEON register  
+    let sum_array: [f64; 2] = std::mem::transmute(total);
+    let result = (sum_array[0] + sum_array[1]) / pixel_count as f64;
+    
+    let elapsed_nanos = start.elapsed().as_nanos() as u64;
+    let metrics = LuminanceMetrics::new(
+        pixel_count,
+        elapsed_nanos,
+        16, // Processing 16 pixels per main iteration
+        "neon_ultra_fma_optimized",
+    );
+    
     (result, metrics)
 }
 

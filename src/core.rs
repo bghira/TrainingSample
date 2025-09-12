@@ -2,31 +2,20 @@
 pub use crate::cropping::*;
 pub use crate::loading::*;
 pub use crate::luminance::*;
-pub use crate::resize::*;
 
-// Re-export SIMD optimizations when available
+// Re-export SIMD optimizations when available (benchmark winners only)
 #[cfg(feature = "simd")]
-pub use crate::resize_simd::*;
-
-#[cfg(feature = "simd")]
-pub use crate::resize_multicore::*;
-
-// High-performance x86 optimizations
-#[cfg(feature = "simd")]
-pub use crate::resize_x86_optimized::*;
-
-#[cfg(feature = "simd")]
-pub use crate::luminance_x86_optimized::*;
-
-#[cfg(feature = "metal")]
-pub use crate::resize_metal::*;
+pub use crate::luminance_simd::*;
 
 #[cfg(feature = "simd")]
 pub use crate::format_conversion_simd::*;
 
+// OpenCV integration for performance parity
+pub use crate::opencv_ops::*;
+
 // Core batch processing functions for native Rust usage
 use anyhow::Result;
-use ndarray::{Array3, Array4};
+use ndarray::Array3;
 use rayon::prelude::*;
 use std::path::Path;
 
@@ -70,16 +59,7 @@ pub fn batch_random_crop_image_arrays(
         .collect()
 }
 
-pub fn batch_resize_image_arrays(
-    images: &[Array3<u8>],
-    target_sizes: &[(u32, u32)], // (width, height)
-) -> Vec<Result<Array3<u8>>> {
-    images
-        .par_iter()
-        .zip(target_sizes.par_iter())
-        .map(|(img, &(width, height))| resize_image_array(&img.view(), width, height))
-        .collect()
-}
+// Note: resize operations now handled by OpenCV in opencv_ops.rs for optimal performance
 
 pub fn batch_calculate_luminance_arrays(images: &[Array3<u8>]) -> Vec<f64> {
     use crate::luminance::calculate_luminance_array_sequential;
@@ -92,42 +72,4 @@ pub fn batch_calculate_luminance_arrays(images: &[Array3<u8>]) -> Vec<f64> {
         .collect()
 }
 
-pub fn batch_resize_video_arrays(
-    videos: &[Array4<u8>],
-    target_sizes: &[(u32, u32)], // (width, height)
-) -> Vec<Result<Array4<u8>>> {
-    videos
-        .par_iter()
-        .zip(target_sizes.par_iter())
-        .map(|(video, &(width, height))| resize_video_array(&video.view(), width, height))
-        .collect()
-}
-
-// SIMD-optimized batch processing functions
-#[cfg(feature = "simd")]
-pub fn batch_resize_image_arrays_simd(
-    images: &[Array3<u8>],
-    target_sizes: &[(u32, u32)], // (width, height)
-    filter: FilterType,
-) -> Vec<Result<(Array3<u8>, ResizeMetrics)>> {
-    images
-        .par_iter()
-        .zip(target_sizes.par_iter())
-        .map(|(img, &(width, height))| resize_image_optimized(&img.view(), width, height, filter))
-        .collect()
-}
-
-#[cfg(feature = "simd")]
-pub fn batch_resize_video_arrays_simd(
-    videos: &[Array4<u8>],
-    target_sizes: &[(u32, u32)], // (width, height)
-    filter: FilterType,
-) -> Vec<Result<(Array4<u8>, Vec<ResizeMetrics>)>> {
-    videos
-        .par_iter()
-        .zip(target_sizes.par_iter())
-        .map(|(video, &(width, height))| {
-            resize_video_optimized(&video.view(), width, height, filter)
-        })
-        .collect()
-}
+// Note: resize operations (images and videos) now handled by OpenCV in opencv_ops.rs for optimal performance

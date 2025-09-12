@@ -10,6 +10,8 @@ ndarray = "0.16"
 num_cpus = "1.16"
 numpy = {version = "0.22", optional = true}
 objc = {version = "0.2", optional = true}
+# OpenCV bindings for performance parity
+opencv = {version = "0.93", optional = true}
 # Python bindings (optional)
 pyo3 = {version = "0.22", features = ["extension-module"], optional = true}
 rayon = "1.8"
@@ -17,8 +19,9 @@ rayon = "1.8"
 wide = {version = "0.7", optional = true}
 
 [features]
-default = ["video", "simd", "metal"]
+default = ["simd", "metal"]
 metal = ["dep:metal", "dep:objc"]
+opencv = ["dep:opencv"]
 python-bindings = ["pyo3", "numpy"]
 simd = ["wide"]
 video = ["ffmpeg-next"]

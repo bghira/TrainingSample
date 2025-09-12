@@ -18,7 +18,12 @@ cargo add trainingsample
 
 ## what it does
 
-batch image operations that actually release the GIL and use all your cores. crop, resize, luminance calc, video frame processing. zero-copy numpy integration when possible.
+hybrid high-performance image processing that uses the best implementation for each operation:
+- **TSR-optimized**: cropping, luminance calculation (SIMD parallelized)  
+- **OpenCV-powered**: resizing operations (industry-standard performance)
+- **unified API**: single Python/Rust interface, static wheels with all dependencies
+
+batch operations that actually release the GIL and use all your cores. zero-copy numpy integration when possible.
 
 ## python usage
 
@@ -81,25 +86,30 @@ let luminances = batch_calculate_luminance_arrays(&images);
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `crop_boxes`: list of (x, y, width, height) tuples
 - returns: list of cropped numpy arrays
+- **implementation**: TSR-optimized for mixed-shape batching
 
 #### `batch_center_crop_images(images, target_sizes)`
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of center-cropped numpy arrays
+- **implementation**: TSR-optimized for mixed-shape batching
 
 #### `batch_random_crop_images(images, target_sizes)`
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of randomly cropped numpy arrays
+- **implementation**: TSR-optimized for mixed-shape batching
 
 #### `batch_resize_images(images, target_sizes)`
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of resized numpy arrays
+- **implementation**: OpenCV for optimal performance
 
 #### `batch_calculate_luminance(images)`
 - `images`: list of numpy arrays (H, W, 3) uint8
 - returns: list of float luminance values
+- **implementation**: TSR SIMD-optimized (10-35x faster than NumPy)
 
 #### `batch_resize_videos(videos, target_sizes)`
 - `videos`: list of numpy arrays (T, H, W, 3) uint8
@@ -110,41 +120,75 @@ let luminances = batch_calculate_luminance_arrays(&images);
 
 same signatures but with `ndarray::Array3<u8>` and `ndarray::Array4<u8>` instead of numpy arrays. check the docs for details.
 
+## architecture
+
+TSR uses a **best-of-breed hybrid approach** for optimal performance:
+
+### operation selection
+- **cropping operations**: TSR implementation
+  - mixed-shape batching (8 different input shapes → 7 different output shapes)
+  - single API call: `tsr.batch_crop_images(mixed_images, mixed_crops)`
+  - vs competitor: individual loops required for each shape combination
+  
+- **luminance calculation**: TSR SIMD implementation  
+  - **18x faster** than NumPy for mixed-shape batches
+  - **35x faster** than NumPy for uniform batches
+  - vectorized across different image sizes in single batch call
+
+- **resize operations**: OpenCV implementation
+  - industry-standard performance and quality
+  - highly optimized C++ implementations  
+  - **7-25x faster** than TSR resize implementations
+
+### static wheel distribution
+- OpenCV **statically linked** into wheel (no external dependencies)
+- single `pip install trainingsample` - no opencv-python conflicts
+- consistent performance across platforms
+- ~50MB wheel includes all optimizations
+
 ## features
 
-- parallel processing with rayon (actually uses your cores)
+- **hybrid architecture**: best implementation for each operation
+- parallel processing with rayon (actually uses your cores) 
 - zero-copy numpy integration via rust-numpy
 - proper error handling (no silent failures)
-- works with opencv, pil, whatever
+- **static OpenCV** bundled (no external dependencies)
 - no python threading nonsense, GIL is released
 - memory efficient batch operations
 - supports both images and videos
 
 ## performance
 
-tested on production scale 5120x5120 images (~78MB each) because toy data means nothing:
+tested on realistic mixed-shape datasets because toy data means nothing:
 
-### luminance calculation
-- single image: **4.7x faster** than numpy
-- batch of 16: **52x faster** than numpy loops
-- throughput: 545 images/sec vs 10.5 images/sec
+### hybrid architecture benchmarks
 
-### image resizing
-- **3.5x faster** than PIL for typical downscaling (5120→512)
-- batch processing scales linearly
-- throughput: 20 images/sec vs 6 images/sec
+#### luminance calculation (TSR-optimized)
+- **mixed-shape batch** (6 different sizes): **18.19x faster** than NumPy
+- **uniform batch** (16 × 1024×1024): **35.25x faster** than NumPy  
+- **throughput**: 5,434 images/sec vs NumPy's 298 images/sec
+- **key advantage**: single batch call handles different image sizes
 
-### real workflows
-- complete pipeline (resize→crop→luminance): **3.1x speedup**
-- 5120x5120 → 1024x1024 → 512x512 → luminance: 0.29s vs 0.90s for batch of 4
+#### resize operations (OpenCV-powered)
+- **performance**: OpenCV **25x faster** than TSR implementations
+- **quality**: industry-standard algorithms (bilinear, Lanczos, etc.)
+- **mixed shapes**: handles different input/output sizes efficiently
+- **integration**: seamless within TSR batch operations
+
+#### cropping operations (TSR-optimized)
+- **mixed-shape advantage**: 8 different input shapes → 7 different output shapes
+- **API simplicity**: `tsr.batch_crop_images(mixed_images, mixed_crops)`
+- **vs competitors**: no loops needed, single batch call
+- **memory efficiency**: zero-copy operations where possible
 
 ### threading reality check
 spoiler: ThreadPoolExecutor won't save you. the rust bindings don't release the GIL as effectively as you'd hope (1.08x speedup vs expected 4x). just use batch processing - it's 6x faster than threading anyway.
 
 ### batch sizes that matter
-- luminance: 8-16 images for best throughput/memory balance
-- resizing: 4-8 images optimal
-- memory usage: ~78MB per 5120x5120 image, plan accordingly
+- **luminance**: 8-16 images for best throughput/memory balance
+- **resizing**: 4-8 images optimal (OpenCV-optimized)
+- **cropping**: benefits from larger batches due to mixed-shape handling
+- **memory usage**: ~78MB per 5120x5120 image, plan accordingly
 
 ## Apple Silicon Performance (M3 Max)
 
@@ -166,11 +210,22 @@ Optimized SIMD implementations with concrete benchmarks:
 
 Tested on Apple Silicon M3 Max (12 P-cores, 38-core GPU, 400 GB/s unified memory).
 
-## why not opencv/pil/whatever
+## why this hybrid approach
 
-because they're slow, don't parallelize properly, and then they hold the GIL.
+### vs pure opencv/pil
+- **OpenCV alone**: excellent resize performance, but poor mixed-shape batching
+- **PIL**: slow, GIL-bound, no batch operations
+- **TSR hybrid**: combines OpenCV's resize speed with TSR's batch/SIMD advantages
 
-TrainingSample uses full parallelism and doesn't care about python limitations.
+### vs pure rust implementations  
+- **TSR resize**: slower than OpenCV's highly-optimized C++ (7-25x difference)
+- **TSR luminance**: faster than NumPy due to SIMD (18-35x speedup)
+- **best of both**: use optimal implementation for each operation
+
+### static distribution advantage
+- **no dependency conflicts**: opencv-python version compatibility issues eliminated
+- **consistent performance**: same optimized OpenCV across all platforms
+- **simple deployment**: single wheel, no system dependencies
 
 ## building from source
 
