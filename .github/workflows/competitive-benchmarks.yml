@@ -34,13 +34,16 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev llvm-dev
-        # Find and set up LLVM environment for opencv-rust bindings
-        LLVM_VERSION=$(llvm-config --version | cut -d. -f1)
-        echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=$(which llvm-config)" >> $GITHUB_ENV
-        # Debug: show what we found
-        find /usr/lib -name "libclang*.so*" 2>/dev/null | head -5
+        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev llvm llvm-dev
+        # Install specific LLVM version tools
+        sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools
+        # Set up LLVM environment for opencv-rust bindings
+        echo "LIBCLANG_PATH=/usr/lib/llvm-14/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
+        # Verify installations
+        ls -la /usr/lib/llvm-14/lib/libclang* || echo "libclang not found in llvm-14/lib"
+        ls -la /usr/lib/x86_64-linux-gnu/libclang* || echo "libclang not found in x86_64-linux-gnu"
+        which llvm-config-14 || echo "llvm-config-14 not found"
 
     - name: Install Python dependencies
       run: |
