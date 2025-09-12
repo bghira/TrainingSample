@@ -19,7 +19,8 @@ cargo add trainingsample
 ## what it does
 
 hybrid high-performance image processing that uses the best implementation for each operation:
-- **TSR-optimized**: cropping, luminance calculation (SIMD parallelized)  
+
+- **TSR-optimized**: cropping, luminance calculation (SIMD parallelized)
 - **OpenCV-powered**: resizing operations (industry-standard performance)
 - **unified API**: single Python/Rust interface, static wheels with all dependencies
 
@@ -83,35 +84,41 @@ let luminances = batch_calculate_luminance_arrays(&images);
 ### python functions
 
 #### `batch_crop_images(images, crop_boxes)`
+
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `crop_boxes`: list of (x, y, width, height) tuples
 - returns: list of cropped numpy arrays
 - **implementation**: TSR-optimized for mixed-shape batching
 
 #### `batch_center_crop_images(images, target_sizes)`
+
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of center-cropped numpy arrays
 - **implementation**: TSR-optimized for mixed-shape batching
 
 #### `batch_random_crop_images(images, target_sizes)`
+
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of randomly cropped numpy arrays
 - **implementation**: TSR-optimized for mixed-shape batching
 
 #### `batch_resize_images(images, target_sizes)`
+
 - `images`: list of numpy arrays (H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of resized numpy arrays
 - **implementation**: OpenCV for optimal performance
 
 #### `batch_calculate_luminance(images)`
+
 - `images`: list of numpy arrays (H, W, 3) uint8
 - returns: list of float luminance values
 - **implementation**: TSR SIMD-optimized (10-35x faster than NumPy)
 
 #### `batch_resize_videos(videos, target_sizes)`
+
 - `videos`: list of numpy arrays (T, H, W, 3) uint8
 - `target_sizes`: list of (width, height) tuples
 - returns: list of resized video numpy arrays
@@ -125,22 +132,24 @@ same signatures but with `ndarray::Array3<u8>` and `ndarray::Array4<u8>` instead
 TSR uses a **best-of-breed hybrid approach** for optimal performance:
 
 ### operation selection
+
 - **cropping operations**: TSR implementation
   - mixed-shape batching (8 different input shapes → 7 different output shapes)
   - single API call: `tsr.batch_crop_images(mixed_images, mixed_crops)`
   - vs competitor: individual loops required for each shape combination
-  
-- **luminance calculation**: TSR SIMD implementation  
+
+- **luminance calculation**: TSR SIMD implementation
   - **18x faster** than NumPy for mixed-shape batches
   - **35x faster** than NumPy for uniform batches
   - vectorized across different image sizes in single batch call
 
 - **resize operations**: OpenCV implementation
   - industry-standard performance and quality
-  - highly optimized C++ implementations  
+  - highly optimized C++ implementations
   - **7-25x faster** than TSR resize implementations
 
 ### static wheel distribution
+
 - OpenCV **statically linked** into wheel (no external dependencies)
 - single `pip install trainingsample` - no opencv-python conflicts
 - consistent performance across platforms
@@ -149,7 +158,7 @@ TSR uses a **best-of-breed hybrid approach** for optimal performance:
 ## features
 
 - **hybrid architecture**: best implementation for each operation
-- parallel processing with rayon (actually uses your cores) 
+- parallel processing with rayon (actually uses your cores)
 - zero-copy numpy integration via rust-numpy
 - proper error handling (no silent failures)
 - **static OpenCV** bundled (no external dependencies)
@@ -164,27 +173,32 @@ tested on realistic mixed-shape datasets because toy data means nothing:
 ### hybrid architecture benchmarks
 
 #### luminance calculation (TSR-optimized)
+
 - **mixed-shape batch** (6 different sizes): **18.19x faster** than NumPy
-- **uniform batch** (16 × 1024×1024): **35.25x faster** than NumPy  
+- **uniform batch** (16 × 1024×1024): **35.25x faster** than NumPy
 - **throughput**: 5,434 images/sec vs NumPy's 298 images/sec
 - **key advantage**: single batch call handles different image sizes
 
 #### resize operations (OpenCV-powered)
+
 - **performance**: OpenCV **25x faster** than TSR implementations
 - **quality**: industry-standard algorithms (bilinear, Lanczos, etc.)
 - **mixed shapes**: handles different input/output sizes efficiently
 - **integration**: seamless within TSR batch operations
 
 #### cropping operations (TSR-optimized)
+
 - **mixed-shape advantage**: 8 different input shapes → 7 different output shapes
 - **API simplicity**: `tsr.batch_crop_images(mixed_images, mixed_crops)`
 - **vs competitors**: no loops needed, single batch call
 - **memory efficiency**: zero-copy operations where possible
 
 ### threading reality check
+
 spoiler: ThreadPoolExecutor won't save you. the rust bindings don't release the GIL as effectively as you'd hope (1.08x speedup vs expected 4x). just use batch processing - it's 6x faster than threading anyway.
 
 ### batch sizes that matter
+
 - **luminance**: 8-16 images for best throughput/memory balance
 - **resizing**: 4-8 images optimal (OpenCV-optimized)
 - **cropping**: benefits from larger batches due to mixed-shape handling
@@ -203,6 +217,7 @@ Optimized SIMD implementations with concrete benchmarks:
 | **Luminance Calc** | RGB→Y | NEON SIMD | **4.7x** | 545 images/sec |
 
 **Key Insights:**
+
 - **CPU SIMD** (multi-core NEON) optimal for memory-bound operations like bilinear resize
 - **GPU Metal** dominates compute-intensive algorithms like Lanczos4 interpolation
 - **Unified memory** architecture enables zero-copy GPU operations
@@ -213,16 +228,19 @@ Tested on Apple Silicon M3 Max (12 P-cores, 38-core GPU, 400 GB/s unified memory
 ## why this hybrid approach
 
 ### vs pure opencv/pil
+
 - **OpenCV alone**: excellent resize performance, but poor mixed-shape batching
 - **PIL**: slow, GIL-bound, no batch operations
 - **TSR hybrid**: combines OpenCV's resize speed with TSR's batch/SIMD advantages
 
-### vs pure rust implementations  
+### vs pure rust implementations
+
 - **TSR resize**: slower than OpenCV's highly-optimized C++ (7-25x difference)
 - **TSR luminance**: faster than NumPy due to SIMD (18-35x speedup)
 - **best of both**: use optimal implementation for each operation
 
 ### static distribution advantage
+
 - **no dependency conflicts**: opencv-python version compatibility issues eliminated
 - **consistent performance**: same optimized OpenCV across all platforms
 - **simple deployment**: single wheel, no system dependencies
