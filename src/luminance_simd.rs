@@ -410,7 +410,6 @@ unsafe fn calculate_luminance_avx2(image: &ArrayView3<u8>) -> (f64, LuminanceMet
 
     let pixel_count = height * width;
     let simd_width = 8;
-    let simd_chunks = width / simd_width;
 
     for h in 0..height {
         let mut w = 0;
@@ -506,7 +505,6 @@ unsafe fn calculate_luminance_sse41(image: &ArrayView3<u8>) -> (f64, LuminanceMe
 
     let pixel_count = height * width;
     let simd_width = 4;
-    let simd_chunks = width / simd_width;
 
     for h in 0..height {
         let mut w = 0;
