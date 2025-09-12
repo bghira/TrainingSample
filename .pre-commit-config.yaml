@@ -13,14 +13,14 @@ repos:
       - id: cargo-check
         name: Rust check
         description: Check Rust code with cargo check
-        entry: cargo check --all-targets --all-features
+        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo check --all-targets --features simd,opencv,python-bindings,metal; else cargo check --all-targets --features simd,opencv,python-bindings; fi'
         language: system
         files: \.rs$
         pass_filenames: false
       - id: clippy
         name: Rust clippy
         description: Lint Rust code with clippy
-        entry: cargo clippy --all-targets --all-features
+        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo clippy --all-targets --features simd,opencv,python-bindings,metal; else cargo clippy --all-targets --features simd,opencv,python-bindings; fi'
         language: system
         files: \.rs$
         pass_filenames: false
@@ -72,7 +72,7 @@ repos:
       - id: rust-test
         name: Rust tests
         description: Run Rust tests
-        entry: cargo test --features video
+        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo test --features simd,opencv,metal -- --test-threads=1; else cargo test --features simd,opencv -- --test-threads=1; fi'
         language: system
         files: \.rs$
         pass_filenames: false
@@ -85,6 +85,18 @@ repos:
         name: Python tests
         description: Run Python tests
         entry: bash -c 'if [ -d "target/wheels" ] || python -c "import trainingsample" 2>/dev/null; then pytest tests/ -v -m "not slow" -x; else echo "Python bindings not built, skipping Python tests"; fi'
+        language: system
+        files: \.(py|rs)$
+        pass_filenames: false
+        stages: [pre-commit]
+
+  # Competitive benchmarks (CI only - too heavy for local precommit)
+  - repo: local
+    hooks:
+      - id: competitive-benchmarks
+        name: Competitive performance benchmarks
+        description: Run competitive benchmarks against OpenCV/NumPy
+        entry: bash -c 'if [[ "$CI" == "true" ]] && ([ -d "target/wheels" ] || python -c "import trainingsample" 2>/dev/null); then pytest tests/test_competitive_benchmarks.py -v --tb=short; else echo "Skipping competitive benchmarks (not in CI or bindings not available)"; fi'
         language: system
         files: \.(py|rs)$
         pass_filenames: false

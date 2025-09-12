@@ -17,16 +17,25 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV and LLVM dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --zig
+        args: --release --out dist --find-interpreter --zig --no-default-features --features python-bindings,simd,opencv
         sccache: 'true'
         manylinux: auto
       env:
@@ -39,31 +48,6 @@ jobs:
         name: wheels-linux-${{ matrix.target }}
         path: dist
 
-  windows:
-    runs-on: windows-latest
-    strategy:
-      matrix:
-        target: [x64]
-    steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-python@v5
-      with:
-        python-version: '3.11'
-        architecture: ${{ matrix.target }}
-    - name: Build wheels
-      uses: PyO3/maturin-action@v1
-      with:
-        target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings
-        sccache: 'true'
-      env:
-        # Use stable ABI for forward compatibility
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-windows-${{ matrix.target }}
-        path: dist
 
   macos:
     runs-on: macos-latest
@@ -76,11 +60,24 @@ jobs:
       with:
         python-version: '3.11'
 
+    - name: Install OpenCV (macOS)
+      run: |
+        # Install OpenCV and LLVM via Homebrew
+        brew install opencv llvm
+        # Set up LLVM environment for opencv-rust bindings (keg-only installation)
+        echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
+        echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Set up OpenCV environment
+        echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
+        echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
+
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings
+        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv,metal
         sccache: 'true'
       env:
         # Use stable ABI for forward compatibility
@@ -109,7 +106,7 @@ jobs:
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [linux, windows, macos, sdist]
+    needs: [linux, macos, sdist]
     steps:
     - uses: actions/download-artifact@v4
       with:

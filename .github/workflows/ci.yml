@@ -20,10 +20,19 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV and LLVM dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
@@ -53,28 +62,37 @@ jobs:
       run: cargo fmt --all -- --check
 
     - name: Run clippy
-      run: cargo clippy --all-targets --all-features -- -D warnings
+      run: cargo clippy --all-targets --no-default-features --features python-bindings,simd,opencv -- -D warnings
 
     - name: Run tests (no Python bindings)
-      run: cargo test --no-default-features --features video
+      run: cargo test --no-default-features --features simd,opencv
 
-    - name: Compile tests (all features)
-      run: cargo test --all-features --no-run
+    - name: Compile tests (Linux compatible features)
+      run: cargo test --no-default-features --features python-bindings,simd,opencv --no-run
 
   python-tests:
     name: Python Tests
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: [3.9, "3.10", "3.11", "3.12"]
+        python-version: ["3.11", "3.12"]
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV and LLVM dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
@@ -85,36 +103,25 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Install maturin (Linux/macOS)
-      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
 
-    - name: Install maturin (Windows)
-      if: runner.os == 'Windows'
-      run: pip install maturin
-
-    - name: Build Python package (Linux/macOS)
-      if: runner.os != 'Windows'
+    - name: Build Python package (Linux)
+      if: runner.os == 'Linux'
       run: |
         mkdir -p dist
-        maturin build --release --out dist
+        maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
-    - name: Build Python package (Windows)
-      if: runner.os == 'Windows'
+    - name: Build Python package (macOS)
+      if: runner.os == 'macOS'
       run: |
-        if not exist dist mkdir dist
-        maturin build --release --out dist
+        mkdir -p dist
+        maturin build --release --out dist --no-default-features --features python-bindings,simd,metal
 
     - name: Install built package (Linux/macOS)
-      if: runner.os != 'Windows'
       run: pip install dist/*.whl
 
-    - name: Install built package (Windows)
-      if: runner.os == 'Windows'
-      shell: cmd
-      run: for %%f in (dist\*.whl) do pip install "%%f"
-
     - name: Install test dependencies
-      run: pip install pytest pytest-benchmark numpy pillow
+      run: pip install pytest pytest-benchmark numpy pillow opencv-python
 
     - name: Run Python tests
       run: pytest tests/ -v
@@ -126,10 +133,19 @@ jobs:
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies
+    - name: Install OpenCV and LLVM dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -155,16 +171,25 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest]
 
     steps:
     - uses: actions/checkout@v4
 
-    - name: Install FFmpeg dependencies (Ubuntu)
+    - name: Install OpenCV and LLVM dependencies (Ubuntu)
       if: runner.os == 'Linux'
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libavutil-dev libavformat-dev libavcodec-dev libavdevice-dev libavfilter-dev libswscale-dev libswresample-dev
+        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
+        # Install LLVM 18 which has the proper libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Set environment variables for LLVM 18
+        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        ls -la /usr/lib/llvm-18/lib/libclang.so
+        which llvm-config-18
 
 
 
@@ -177,24 +202,30 @@ jobs:
       uses: dtolnay/rust-toolchain@stable
 
     - name: Install maturin (Linux/macOS)
-      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
 
-    - name: Install maturin (Windows)
-      if: runner.os == 'Windows'
-      run: pip install maturin
+    - name: Install OpenCV (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # Install OpenCV and LLVM via Homebrew
+        brew install opencv llvm
+        # Set up LLVM environment for opencv-rust bindings (keg-only installation)
+        echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
+        echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Set up OpenCV environment
+        echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
+        echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
 
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
-      run: maturin build --release --out dist
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
-    - name: Build wheels (macOS - no video features)
+    - name: Build wheels (macOS)
       if: runner.os == 'macOS'
-      run: maturin build --release --out dist --no-default-features --features python-bindings
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv,metal
 
-    - name: Build wheels (Windows - no video features)
-      if: runner.os == 'Windows'
-      run: maturin build --release --out dist --no-default-features --features python-bindings
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4

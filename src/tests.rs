@@ -12,6 +12,46 @@ fn create_test_video() -> Array4<u8> {
 }
 
 #[cfg(test)]
+mod x86_optimization_tests {
+    use super::*;
+    use ndarray::Array3;
+
+    fn create_large_test_image() -> Array3<u8> {
+        Array3::from_shape_fn((256, 256, 3), |(y, x, c)| ((x + y + c * 85) % 256) as u8)
+    }
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_integration_with_batch_functions() {
+        use crate::core::{batch_calculate_luminance_arrays, batch_resize_image_arrays};
+
+        let images = vec![create_test_image(), create_large_test_image()];
+
+        // Test batch resize
+        let target_sizes = [(64u32, 64u32); 2];
+        let batch_resize_result = batch_resize_image_arrays(&images, &target_sizes);
+        assert_eq!(batch_resize_result.len(), 2);
+
+        for result in batch_resize_result {
+            assert!(result.is_ok(), "Batch resize should succeed");
+            let resized = result.unwrap();
+            assert_eq!(resized.dim(), (64, 64, 3));
+        }
+
+        // Test batch luminance
+        let batch_luminance_result = batch_calculate_luminance_arrays(&images);
+        assert_eq!(batch_luminance_result.len(), 2);
+
+        for luminance in batch_luminance_result {
+            assert!(
+                luminance > 0.0 && luminance < 255.0,
+                "Luminance should be valid"
+            );
+        }
+    }
+}
+
+#[cfg(test)]
 mod cropping_tests {
     use super::*;
 
@@ -98,6 +138,7 @@ mod resize_tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_image_array() {
         let img = create_test_image();
         let result = resize_image_array(&img.view(), 64, 64).unwrap();
@@ -105,6 +146,7 @@ mod resize_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_video_array() {
         let video = create_test_video();
         let result = resize_video_array(&video.view(), 32, 32).unwrap();
@@ -112,6 +154,7 @@ mod resize_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_upscale() {
         let img = Array3::from_shape_fn((10, 10, 3), |(y, x, c)| (x + y + c) as u8);
         let result = resize_image_array(&img.view(), 20, 20).unwrap();
@@ -119,6 +162,7 @@ mod resize_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_downscale() {
         let img = create_test_image();
         let result = resize_image_array(&img.view(), 25, 25).unwrap();
@@ -145,6 +189,7 @@ mod batch_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_batch_resize_image_arrays() {
         let images = vec![create_test_image(), create_test_image()];
         let target_sizes = vec![(64, 64), (32, 32)];
@@ -170,6 +215,7 @@ mod batch_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_batch_resize_video_arrays() {
         let videos = vec![create_test_video()];
         let target_sizes = vec![(25, 25)];
@@ -186,6 +232,7 @@ mod integration_tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_crop_then_resize_pipeline() {
         let img = create_test_image();
 
@@ -199,6 +246,7 @@ mod integration_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_full_processing_pipeline() {
         let img = create_test_image();
 
@@ -240,9 +288,51 @@ mod edge_case_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_same_size() {
         let img = create_test_image();
         let result = resize_image_array(&img.view(), 100, 100).unwrap();
         assert_eq!(result.dim(), (100, 100, 3));
+    }
+}
+
+// OpenCV specific tests
+#[cfg(test)]
+mod opencv_tests {
+    use super::*;
+
+    #[cfg(feature = "opencv")]
+    use crate::opencv_ops::OpenCVBatchProcessor;
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_opencv_batch_resize() {
+        let processor = OpenCVBatchProcessor::new();
+        let test_image = create_test_image();
+
+        let images = vec![test_image.view()];
+        let target_sizes = vec![(128, 128)];
+
+        let results = processor.batch_resize_lanczos4(&images, &target_sizes);
+        assert!(results.is_ok());
+
+        let resized = results.unwrap();
+        assert_eq!(resized.len(), 1);
+        assert_eq!(resized[0].dim(), (128, 128, 3));
+    }
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_opencv_batch_luminance() {
+        let processor = OpenCVBatchProcessor::new();
+        let test_image = create_test_image();
+
+        let images = vec![test_image.view()];
+        let results = processor.batch_calculate_luminance_opencv(&images);
+        assert!(results.is_ok());
+
+        let luminance = results.unwrap();
+        assert_eq!(luminance.len(), 1);
+        assert!(luminance[0] >= 0.0 && luminance[0] <= 255.0);
     }
 }
