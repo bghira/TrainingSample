@@ -21,6 +21,7 @@ mod x86_optimization_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_integration_with_batch_functions() {
         use crate::core::{batch_calculate_luminance_arrays, batch_resize_image_arrays};
 
@@ -137,6 +138,7 @@ mod resize_tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_image_array() {
         let img = create_test_image();
         let result = resize_image_array(&img.view(), 64, 64).unwrap();
@@ -144,6 +146,7 @@ mod resize_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_video_array() {
         let video = create_test_video();
         let result = resize_video_array(&video.view(), 32, 32).unwrap();
@@ -151,6 +154,7 @@ mod resize_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_upscale() {
         let img = Array3::from_shape_fn((10, 10, 3), |(y, x, c)| (x + y + c) as u8);
         let result = resize_image_array(&img.view(), 20, 20).unwrap();
@@ -158,6 +162,7 @@ mod resize_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_downscale() {
         let img = create_test_image();
         let result = resize_image_array(&img.view(), 25, 25).unwrap();
@@ -184,6 +189,7 @@ mod batch_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_batch_resize_image_arrays() {
         let images = vec![create_test_image(), create_test_image()];
         let target_sizes = vec![(64, 64), (32, 32)];
@@ -209,6 +215,7 @@ mod batch_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_batch_resize_video_arrays() {
         let videos = vec![create_test_video()];
         let target_sizes = vec![(25, 25)];
@@ -225,6 +232,7 @@ mod integration_tests {
     use super::*;
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_crop_then_resize_pipeline() {
         let img = create_test_image();
 
@@ -238,6 +246,7 @@ mod integration_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_full_processing_pipeline() {
         let img = create_test_image();
 
@@ -279,6 +288,7 @@ mod edge_case_tests {
     }
 
     #[test]
+    #[cfg(feature = "opencv")]
     fn test_resize_same_size() {
         let img = create_test_image();
         let result = resize_image_array(&img.view(), 100, 100).unwrap();
@@ -290,6 +300,8 @@ mod edge_case_tests {
 #[cfg(test)]
 mod opencv_tests {
     use super::*;
+
+    #[cfg(feature = "opencv")]
     use crate::opencv_ops::OpenCVBatchProcessor;
 
     #[test]

@@ -65,7 +65,7 @@ jobs:
       run: cargo clippy --all-targets --no-default-features --features python-bindings,simd,opencv -- -D warnings
 
     - name: Run tests (no Python bindings)
-      run: cargo test --no-default-features --features simd
+      run: cargo test --no-default-features --features simd,opencv
 
     - name: Compile tests (Linux compatible features)
       run: cargo test --no-default-features --features python-bindings,simd,opencv --no-run
