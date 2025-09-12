@@ -34,13 +34,15 @@ jobs:
     - name: Install OpenCV and LLVM dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev
-        # Install the exact packages that provide libclang.so
-        sudo apt-get install -y libclang1-14 libclang-cpp14
+        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev llvm-dev
+        # Install the exact packages that provide libclang.so AND llvm-config
+        sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang1-14 libclang-cpp14
         # Set environment variables that clang-sys actually needs
         echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify the files exist
+        # Verify BOTH llvm-config and libclang files exist
+        which llvm-config-14
         ls -la /usr/lib/x86_64-linux-gnu/libclang.so*
 
     - name: Install Python dependencies
