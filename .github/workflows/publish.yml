@@ -63,7 +63,7 @@ jobs:
     - name: Install OpenCV (Windows)
       run: |
         # Install OpenCV via vcpkg for static linking
-        vcpkg install opencv[core,imgproc,imgcodecs]:x64-windows-static
+        vcpkg install opencv:x64-windows-static
         echo "OPENCV_LINK_LIBS=opencv_core4,opencv_imgproc4,opencv_imgcodecs4" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_PATHS=C:\vcpkg\installed\x64-windows-static\lib" >> $env:GITHUB_ENV
         echo "OPENCV_INCLUDE_PATHS=C:\vcpkg\installed\x64-windows-static\include" >> $env:GITHUB_ENV
