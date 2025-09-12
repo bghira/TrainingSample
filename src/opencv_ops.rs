@@ -3,8 +3,8 @@ use ndarray::{Array3, ArrayView3};
 
 #[cfg(feature = "opencv")]
 use opencv::{
-    core::{Mat},
-    imgproc::{resize, INTER_LANCZOS4, cvt_color, COLOR_RGB2GRAY},
+    core::Mat,
+    imgproc::{cvt_color, resize, COLOR_RGB2GRAY, INTER_LANCZOS4},
     prelude::*,
 };
 
@@ -46,7 +46,7 @@ impl OpenCVBatchProcessor {
         Ok(results)
     }
 
-    /// Batch video resize using OpenCV 
+    /// Batch video resize using OpenCV
     pub fn batch_resize_videos(
         &self,
         videos: &[ndarray::ArrayView4<u8>],
@@ -60,11 +60,11 @@ impl OpenCVBatchProcessor {
         let mut all_frames = Vec::new();
         let mut all_target_sizes = Vec::new();
         let mut video_frame_counts = Vec::new();
-        
+
         for (video, &target_size) in videos.iter().zip(target_sizes.iter()) {
             let (frames, _, _, _) = video.dim();
             video_frame_counts.push(frames);
-            
+
             // Collect all frames from this video
             for frame_idx in 0..frames {
                 let frame = video.index_axis(ndarray::Axis(0), frame_idx);
@@ -72,29 +72,36 @@ impl OpenCVBatchProcessor {
                 all_target_sizes.push(target_size);
             }
         }
-        
+
         // Process ALL frames in one giant batch operation - maximum efficiency!
         let resized_frames = self.batch_resize_images(&all_frames, &all_target_sizes)?;
-        
+
         // Reconstruct video structure from flattened results
         let mut results = Vec::new();
         let mut frame_idx = 0;
-        
+
         for (video_idx, frame_count) in video_frame_counts.iter().enumerate() {
             let (target_width, target_height) = target_sizes[video_idx];
-            let result_shape = (*frame_count, target_height as usize, target_width as usize, 3);
+            let result_shape = (
+                *frame_count,
+                target_height as usize,
+                target_width as usize,
+                3,
+            );
             let mut video_result = ndarray::Array4::<u8>::zeros(result_shape);
-            
+
             // Copy frames for this video
             for local_frame_idx in 0..*frame_count {
                 let global_frame = &resized_frames[frame_idx];
-                video_result.index_axis_mut(ndarray::Axis(0), local_frame_idx).assign(global_frame);
+                video_result
+                    .index_axis_mut(ndarray::Axis(0), local_frame_idx)
+                    .assign(global_frame);
                 frame_idx += 1;
             }
-            
+
             results.push(video_result);
         }
-        
+
         Ok(results)
     }
 
@@ -116,14 +123,14 @@ impl OpenCVBatchProcessor {
         target_height: u32,
     ) -> Result<Array3<u8>> {
         let (_height, _width, channels) = image.dim();
-        
+
         if channels != 3 {
             anyhow::bail!("Only 3-channel RGB images are supported");
         }
 
         // Convert ndarray to OpenCV Mat
         let src_mat = self.ndarray_to_mat(image)?;
-        
+
         // Perform OpenCV resize
         let mut dst_mat = Mat::default();
         resize(
@@ -139,70 +146,37 @@ impl OpenCVBatchProcessor {
         self.mat_to_ndarray(&dst_mat)
     }
 
-    /// Single video resize using OpenCV (process frame by frame)
-    fn resize_single_video_opencv(
-        &self,
-        video: &ndarray::ArrayView4<u8>,
-        target_width: u32,
-        target_height: u32,
-    ) -> Result<ndarray::Array4<u8>> {
-        let (frames, _height, _width, channels) = video.dim();
-        
-        if channels != 3 {
-            anyhow::bail!("Only 3-channel RGB videos are supported");
-        }
-
-        // Ultra-optimized approach: process all frames as a batch of images
-        // Collect frame views efficiently  
-        let frame_views: Vec<_> = (0..frames)
-            .map(|i| video.index_axis(ndarray::Axis(0), i))
-            .collect();
-        
-        // Create target sizes for all frames (same size for all frames)
-        let target_sizes = vec![(target_width, target_height); frames];
-        
-        // Process all frames in one batched OpenCV operation - MUCH faster!
-        let resized_frames = self.batch_resize_images(&frame_views, &target_sizes)?;
-        
-        // Efficiently stack results into 4D array
-        let result_shape = (frames, target_height as usize, target_width as usize, channels);
-        let mut result = ndarray::Array4::<u8>::zeros(result_shape);
-        
-        for (i, frame) in resized_frames.into_iter().enumerate() {
-            result.index_axis_mut(ndarray::Axis(0), i).assign(&frame);
-        }
-        
-        Ok(result)
-    }
+    // Single video resize function removed - now using batch_resize_videos for all operations
 
     /// Batch luminance calculation using OpenCV's cvtColor
-    pub fn batch_calculate_luminance_opencv(
-        &self,
-        images: &[ArrayView3<u8>],
-    ) -> Result<Vec<f64>> {
+    pub fn batch_calculate_luminance_opencv(&self, images: &[ArrayView3<u8>]) -> Result<Vec<f64>> {
         images
             .iter()
-            .map(|image| {
-                self.calculate_luminance_single_opencv(image)
-            })
+            .map(|image| self.calculate_luminance_single_opencv(image))
             .collect()
     }
 
     /// Single image luminance using OpenCV
     fn calculate_luminance_single_opencv(&self, image: &ArrayView3<u8>) -> Result<f64> {
         let (_height, _width, channels) = image.dim();
-        
+
         if channels != 3 {
             anyhow::bail!("Only 3-channel RGB images are supported");
         }
 
         // Convert to OpenCV Mat
         let src_mat = self.ndarray_to_mat(image)?;
-        
+
         // Convert to grayscale using OpenCV's optimized implementation
         let mut gray_mat = Mat::default();
-        cvt_color(&src_mat, &mut gray_mat, COLOR_RGB2GRAY, 0, opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT)?;
-        
+        cvt_color(
+            &src_mat,
+            &mut gray_mat,
+            COLOR_RGB2GRAY,
+            0,
+            opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
+        )?;
+
         // Calculate mean (luminance)
         let mean_scalar = opencv::core::mean(&gray_mat, &opencv::core::no_array())?;
         Ok(mean_scalar[0])
@@ -211,32 +185,28 @@ impl OpenCVBatchProcessor {
     /// Convert ndarray to OpenCV Mat (optimized for performance)
     fn ndarray_to_mat(&self, image: &ArrayView3<u8>) -> Result<Mat> {
         let (height, width, channels) = image.dim();
-        
+
         if channels != 3 {
             anyhow::bail!("Only 3-channel RGB images are supported");
         }
-        
-        let data_slice = image.as_slice().ok_or_else(|| anyhow::anyhow!("Image data is not contiguous"))?;
-        
+
+        let data_slice = image
+            .as_slice()
+            .ok_or_else(|| anyhow::anyhow!("Image data is not contiguous"))?;
+
         // ULTRA-OPTIMIZED: Create Mat directly from contiguous data using bulk copy
-        let mut mat = unsafe {
-            Mat::new_size_with_default(
-                opencv::core::Size::new(width as i32, height as i32),
-                opencv::core::CV_8UC3,
-                opencv::core::Scalar::default(),
-            )?
-        };
-        
+        let mut mat = Mat::new_size_with_default(
+            opencv::core::Size::new(width as i32, height as i32),
+            opencv::core::CV_8UC3,
+            opencv::core::Scalar::default(),
+        )?;
+
         // Use bulk memory copy instead of pixel-by-pixel copying
         unsafe {
-            let dst_ptr = mat.ptr_mut(0)? as *mut u8;
-            std::ptr::copy_nonoverlapping(
-                data_slice.as_ptr(),
-                dst_ptr,
-                height * width * channels,
-            );
+            let dst_ptr = mat.ptr_mut(0)?;
+            std::ptr::copy_nonoverlapping(data_slice.as_ptr(), dst_ptr, height * width * channels);
         }
-        
+
         Ok(mat)
     }
 
@@ -245,22 +215,18 @@ impl OpenCVBatchProcessor {
         let height = mat.rows() as usize;
         let width = mat.cols() as usize;
         let channels = mat.channels() as usize;
-        
+
         if channels != 3 {
             anyhow::bail!("Expected 3-channel image");
         }
 
         let mut result = Array3::<u8>::zeros((height, width, channels));
-        
+
         // Optimized bulk memory copy from OpenCV Mat to ndarray
         unsafe {
-            let src_ptr = mat.ptr(0)? as *const u8;
+            let src_ptr = mat.ptr(0)?;
             let dst_ptr = result.as_mut_ptr();
-            std::ptr::copy_nonoverlapping(
-                src_ptr,
-                dst_ptr,
-                height * width * channels,
-            );
+            std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, height * width * channels);
         }
 
         Ok(result)
@@ -349,10 +315,7 @@ impl OpenCVBatchProcessor {
         anyhow::bail!("OpenCV feature not enabled. Rebuild with --features opencv")
     }
 
-    pub fn batch_calculate_luminance_opencv(
-        &self,
-        _images: &[ArrayView3<u8>],
-    ) -> Result<Vec<f64>> {
+    pub fn batch_calculate_luminance_opencv(&self, _images: &[ArrayView3<u8>]) -> Result<Vec<f64>> {
         anyhow::bail!("OpenCV feature not enabled. Rebuild with --features opencv")
     }
 }
@@ -366,16 +329,15 @@ mod tests {
     #[cfg(feature = "opencv")]
     fn test_opencv_batch_resize() {
         let processor = OpenCVBatchProcessor::new();
-        let test_image = Array3::<u8>::from_shape_fn((256, 256, 3), |(h, w, c)| {
-            ((h + w + c) % 256) as u8
-        });
-        
+        let test_image =
+            Array3::<u8>::from_shape_fn((256, 256, 3), |(h, w, c)| ((h + w + c) % 256) as u8);
+
         let images = vec![test_image.view()];
         let target_sizes = vec![(128, 128)];
-        
+
         let results = processor.batch_resize_lanczos4(&images, &target_sizes);
         assert!(results.is_ok());
-        
+
         let resized = results.unwrap();
         assert_eq!(resized.len(), 1);
         assert_eq!(resized[0].dim(), (128, 128, 3));
@@ -385,14 +347,13 @@ mod tests {
     #[cfg(feature = "opencv")]
     fn test_opencv_batch_luminance() {
         let processor = OpenCVBatchProcessor::new();
-        let test_image = Array3::<u8>::from_shape_fn((64, 64, 3), |(h, w, c)| {
-            ((h + w + c) % 256) as u8
-        });
-        
+        let test_image =
+            Array3::<u8>::from_shape_fn((64, 64, 3), |(h, w, c)| ((h + w + c) % 256) as u8);
+
         let images = vec![test_image.view()];
         let results = processor.batch_calculate_luminance_opencv(&images);
         assert!(results.is_ok());
-        
+
         let luminance = results.unwrap();
         assert_eq!(luminance.len(), 1);
         assert!(luminance[0] >= 0.0 && luminance[0] <= 255.0);

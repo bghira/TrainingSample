@@ -53,22 +53,21 @@ pub unsafe fn calculate_luminance_raw_buffer(
 
     let mut sum = 0.0f64;
     let pixel_count = width * height;
-    
+
     // Process pixels with SIMD-friendly loop
     for i in 0..pixel_count {
         let pixel_offset = i * channels;
         let r = *rgb_ptr.add(pixel_offset) as f64;
-        let g = *rgb_ptr.add(pixel_offset + 1) as f64; 
+        let g = *rgb_ptr.add(pixel_offset + 1) as f64;
         let b = *rgb_ptr.add(pixel_offset + 2) as f64;
-        
+
         // ITU-R BT.709 luminance formula
         let luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
         sum += luminance;
     }
-    
+
     sum / pixel_count as f64
 }
-
 
 /// Luminance calculation with performance metrics
 pub fn calculate_luminance_with_metrics(image: &ArrayView3<u8>) -> (f64, LuminanceMetrics) {

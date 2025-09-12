@@ -13,14 +13,14 @@ repos:
       - id: cargo-check
         name: Rust check
         description: Check Rust code with cargo check
-        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo check --all-targets --all-features; else cargo check --all-targets --features simd,video,python-bindings; fi'
+        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo check --all-targets --all-features; else cargo check --all-targets --features simd,opencv,python-bindings; fi'
         language: system
         files: \.rs$
         pass_filenames: false
       - id: clippy
         name: Rust clippy
         description: Lint Rust code with clippy
-        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo clippy --all-targets --all-features; else cargo clippy --all-targets --features simd,video,python-bindings; fi'
+        entry: bash -c 'if [[ "$OSTYPE" == "darwin"* ]]; then cargo clippy --all-targets --all-features; else cargo clippy --all-targets --features simd,opencv,python-bindings; fi'
         language: system
         files: \.rs$
         pass_filenames: false
@@ -72,7 +72,7 @@ repos:
       - id: rust-test
         name: Rust tests
         description: Run Rust tests
-        entry: cargo test --features video
+        entry: cargo test --features simd,opencv -- --test-threads=1
         language: system
         files: \.rs$
         pass_filenames: false

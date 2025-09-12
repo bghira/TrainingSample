@@ -4,13 +4,12 @@ mod cropping;
 mod loading;
 mod luminance;
 
-// SIMD optimizations - only when feature is enabled  
+// SIMD optimizations - only when feature is enabled
 #[cfg(feature = "simd")]
 mod luminance_simd;
 
 #[cfg(feature = "simd")]
 mod format_conversion_simd;
-
 
 // OpenCV integration for performance parity
 mod opencv_ops;
@@ -39,10 +38,10 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(batch_crop_images, m)?)?;
     m.add_function(wrap_pyfunction!(batch_center_crop_images, m)?)?;
     m.add_function(wrap_pyfunction!(batch_random_crop_images, m)?)?;
-    
+
     // TSR LUMINANCE OPERATIONS (BENCHMARK WINNERS)
     m.add_function(wrap_pyfunction!(batch_calculate_luminance, m)?)?;
-    
+
     // TSR FORMAT CONVERSION OPERATIONS (BENCHMARK WINNERS)
     m.add_function(wrap_pyfunction!(
         crate::python_bindings::rgb_to_rgba_optimized,
@@ -52,14 +51,11 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
         crate::python_bindings::rgba_to_rgb_optimized,
         m
     )?)?;
-    
-    // OPENCV RESIZE OPERATIONS (BENCHMARK WINNERS)  
+
+    // OPENCV RESIZE OPERATIONS (BENCHMARK WINNERS)
     m.add_function(wrap_pyfunction!(batch_resize_images, m)?)?;
     m.add_function(wrap_pyfunction!(batch_resize_videos, m)?)?;
-    
-    // HYBRID PIPELINE (TSR + OPENCV)
-    m.add_function(wrap_pyfunction!(batch_sft_pipeline, m)?)?;
-    
+
     // HIGH-PERFORMANCE OPENCV RESIZE (BENCHMARK WINNER)
     m.add_function(wrap_pyfunction!(
         crate::python_bindings::resize_bilinear_opencv,

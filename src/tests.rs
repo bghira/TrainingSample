@@ -192,88 +192,9 @@ mod x86_optimization_tests {
         );
     }
 
-    #[test]
-    #[cfg(feature = "simd")]
-    fn test_x86_fallback_functions_on_non_x86() {
-        use crate::luminance_x86_optimized::{
-            calculate_luminance_x86_optimized, calculate_luminance_x86_parallel,
-        };
-        use crate::resize_x86_optimized::resize_bilinear_x86_optimized;
+    // X86 optimization tests removed - functionality now integrated into SIMD module
 
-        let image = create_test_image();
-
-        // On non-x86 platforms (like Apple Silicon), these should return appropriate errors/defaults
-        #[cfg(not(all(feature = "simd", target_arch = "x86_64")))]
-        {
-            let resize_result = resize_bilinear_x86_optimized(&image.view(), 50, 50);
-            assert!(
-                resize_result.is_err(),
-                "x86 resize should fail gracefully on non-x86"
-            );
-
-            let luminance_result = calculate_luminance_x86_optimized(&image.view());
-            assert!(
-                luminance_result.is_err(),
-                "x86 luminance should fail on non-x86"
-            );
-
-            let luminance2 = calculate_luminance_x86_parallel(&image.view());
-            assert!(
-                luminance2.is_err(),
-                "x86 parallel luminance should fail gracefully on non-x86"
-            );
-        }
-
-        // On x86 platforms, these should work
-        #[cfg(all(feature = "simd", target_arch = "x86_64"))]
-        {
-            let resize_result = resize_bilinear_x86_optimized(&image.view(), 50, 50);
-            assert!(resize_result.is_ok(), "x86 resize should succeed on x86");
-
-            let luminance1 = calculate_luminance_x86_optimized(&image.view()).unwrap();
-            assert!(luminance1 > 0.0, "x86 luminance should work on x86");
-
-            let luminance2 = calculate_luminance_x86_parallel(&image.view());
-            assert!(
-                luminance2.is_ok(),
-                "x86 parallel luminance should work on x86"
-            );
-        }
-    }
-
-    #[cfg(all(feature = "simd", target_arch = "x86_64"))]
-    #[test]
-    fn test_x86_performance_characteristics() {
-        use crate::resize_x86_optimized::X86ResizeEngine;
-        use std::time::Instant;
-
-        let engine = X86ResizeEngine::new().unwrap();
-        let large_image = create_large_test_image();
-
-        // Time a resize operation
-        let start = Instant::now();
-        let result = engine.resize_bilinear(&large_image.view(), 128, 128);
-        let elapsed = start.elapsed();
-
-        assert!(result.is_ok(), "Large image resize should succeed");
-        assert!(
-            elapsed.as_millis() < 5000,
-            "Resize should complete in reasonable time"
-        );
-
-        // Verify cores were utilized efficiently
-        let cores_used = engine.cores_used();
-        let available_cores = std::thread::available_parallelism()
-            .map(|p| p.get())
-            .unwrap_or(1);
-
-        // Should use at least some cores, but not necessarily all (depends on workload)
-        assert!(cores_used > 0, "Should use at least one core");
-        assert!(
-            cores_used <= available_cores,
-            "Should not use more cores than available"
-        );
-    }
+    // X86 performance test removed - functionality now integrated into SIMD module
 
     #[test]
     fn test_x86_integration_with_batch_functions() {

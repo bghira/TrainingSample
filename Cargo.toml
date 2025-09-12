@@ -1,7 +1,6 @@
 [dependencies]
 anyhow = "1.0"
 fastrand = "2.0"
-ffmpeg-next = {version = "7.0", optional = true}
 image = {version = "0.25", features = ["png", "jpeg", "webp"]}
 imageproc = "0.25"
 # Metal GPU acceleration
@@ -24,7 +23,6 @@ metal = ["dep:metal", "dep:objc"]
 opencv = ["dep:opencv"]
 python-bindings = ["pyo3", "numpy"]
 simd = ["wide"]
-video = ["ffmpeg-next"]
 
 [lib]
 crate-type = ["cdylib", "rlib"]

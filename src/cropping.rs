@@ -84,11 +84,13 @@ pub fn batch_center_crop_arrays(
     target_sizes: &[(usize, usize)], // (width, height)
 ) -> Result<Vec<Array3<u8>>> {
     if images.len() != target_sizes.len() {
-        return Err(anyhow::anyhow!("Number of images and target sizes must match"));
+        return Err(anyhow::anyhow!(
+            "Number of images and target sizes must match"
+        ));
     }
 
     let mut results = Vec::with_capacity(images.len());
-    
+
     // Process each image with minimal overhead
     for (image, &(target_width, target_height)) in images.iter().zip(target_sizes.iter()) {
         let (img_height, img_width, _) = image.dim();
@@ -115,7 +117,9 @@ pub fn batch_center_crop_arrays(
         }
 
         // Direct slice and copy - optimized for speed
-        let cropped = image.slice(s![y..y + actual_height, x..x + actual_width, ..]).to_owned();
+        let cropped = image
+            .slice(s![y..y + actual_height, x..x + actual_width, ..])
+            .to_owned();
         results.push(cropped);
     }
 
@@ -132,28 +136,24 @@ pub fn batch_center_crop_arrays(
 pub unsafe fn crop_raw_buffer(
     src_ptr: *const u8,
     src_shape: (usize, usize, usize), // (height, width, channels)
-    dst_ptr: *mut u8, 
+    dst_ptr: *mut u8,
     crop_coords: (usize, usize, usize, usize), // (start_y, start_x, height, width)
 ) {
     let (_src_height, src_width, channels) = src_shape;
     let (start_y, start_x, crop_height, crop_width) = crop_coords;
-    
+
     // Calculate strides
     let src_row_stride = src_width * channels;
-    let dst_row_stride = crop_width * channels; 
+    let dst_row_stride = crop_width * channels;
     let pixel_size = channels;
-    
+
     // Copy row by row for cache efficiency
     for y in 0..crop_height {
         let src_row_start = src_ptr.add((start_y + y) * src_row_stride + start_x * pixel_size);
         let dst_row_start = dst_ptr.add(y * dst_row_stride);
-        
+
         // Copy entire row at once (faster than pixel-by-pixel)
-        std::ptr::copy_nonoverlapping(
-            src_row_start,
-            dst_row_start, 
-            crop_width * pixel_size
-        );
+        std::ptr::copy_nonoverlapping(src_row_start, dst_row_start, crop_width * pixel_size);
     }
 }
 
