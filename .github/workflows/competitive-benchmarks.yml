@@ -34,7 +34,7 @@ jobs:
     - name: Install system dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev
+        sudo apt-get install -y pkg-config libopencv-dev python3-opencv clang libclang-dev llvm-dev
 
     - name: Install Python dependencies
       run: |
