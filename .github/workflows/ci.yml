@@ -226,17 +226,35 @@ jobs:
       if: runner.os == 'Windows'
       run: pip install maturin
 
+    - name: Install OpenCV (Windows)
+      if: runner.os == 'Windows'
+      run: |
+        # Install OpenCV via vcpkg for static linking
+        vcpkg install opencv[core,imgproc,imgcodecs]:x64-windows-static
+        echo "OPENCV_LINK_LIBS=opencv_core4,opencv_imgproc4,opencv_imgcodecs4" >> $env:GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=C:\vcpkg\installed\x64-windows-static\lib" >> $env:GITHUB_ENV
+        echo "OPENCV_INCLUDE_PATHS=C:\vcpkg\installed\x64-windows-static\include" >> $env:GITHUB_ENV
+
+    - name: Install OpenCV (macOS)
+      if: runner.os == 'macOS'
+      run: |
+        # Install OpenCV via Homebrew
+        brew install opencv
+        echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
+        echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
+
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
       run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
     - name: Build wheels (macOS)
       if: runner.os == 'macOS'
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,metal
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv,metal
 
     - name: Build wheels (Windows)
       if: runner.os == 'Windows'
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
