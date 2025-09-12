@@ -138,7 +138,7 @@ jobs:
       run: for %%f in (dist\*.whl) do pip install "%%f"
 
     - name: Install test dependencies
-      run: pip install pytest pytest-benchmark numpy pillow
+      run: pip install pytest pytest-benchmark numpy pillow opencv-python
 
     - name: Run Python tests
       run: pytest tests/ -v
