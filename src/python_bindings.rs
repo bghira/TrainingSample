@@ -245,19 +245,49 @@ pub fn batch_calculate_luminance_zero_copy(
 #[pyfunction]
 pub fn batch_resize_images_zero_copy<'py>(
     py: Python<'py>,
-    images: Vec<PyReadonlyArray3<u8>>,
-    target_sizes: Vec<(usize, usize)>, // (width, height)
-) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
+    images: &Bound<'py, PyAny>,
+    target_sizes: &Bound<'py, PyAny>,
+) -> PyResult<Bound<'py, PyAny>> {
     use rayon::prelude::*;
+    use pyo3::types::{PyList, PyTuple};
 
-    let batch_size = images.len();
-    if batch_size != target_sizes.len() {
+    // INTELLIGENT OVERLOADING: Detect single vs batch input
+    let is_single_image = is_numpy_array(images);
+    let is_single_size = is_tuple_or_list_of_two(target_sizes);
+
+    if is_single_image && is_single_size {
+        // SINGLE IMAGE PATH: Direct return, zero wrapper overhead!
+        let image_array = images.extract::<PyReadonlyArray3<u8>>()?;
+        let size_tuple = target_sizes.extract::<(usize, usize)>()?;
+        let result = resize_single_image_direct(py, &image_array, size_tuple)?;
+        return Ok(result.into_any());
+    }
+
+    // BATCH PATH: Convert to Vec format and process
+    let images_vec: Vec<PyReadonlyArray3<u8>> = if is_single_image {
+        // Single image wrapped in list
+        vec![images.extract::<PyReadonlyArray3<u8>>()?]
+    } else {
+        // List of images
+        images.extract::<Vec<PyReadonlyArray3<u8>>>()?
+    };
+
+    let sizes_vec: Vec<(usize, usize)> = if is_single_size {
+        // Single size wrapped in list
+        vec![target_sizes.extract::<(usize, usize)>()?]
+    } else {
+        // List of sizes
+        target_sizes.extract::<Vec<(usize, usize)>>()?
+    };
+
+    let batch_size = images_vec.len();
+    if batch_size != sizes_vec.len() {
         return Err(pyo3::exceptions::PyValueError::new_err(
             "Images and target_sizes length mismatch",
         ));
     }
 
-    // Extract raw pointers and dimensions first (on main thread)
+    // BATCH PROCESSING: Extract raw pointers and dimensions (on main thread)
     #[derive(Clone, Copy)]
     struct ResizeData {
         src_ptr: *const u8,
@@ -271,9 +301,9 @@ pub fn batch_resize_images_zero_copy<'py>(
     unsafe impl Send for ResizeData {}
     unsafe impl Sync for ResizeData {}
 
-    let resize_data: Vec<ResizeData> = images
+    let resize_data: Vec<ResizeData> = images_vec
         .iter()
-        .zip(target_sizes.iter())
+        .zip(sizes_vec.iter())
         .map(|(image, &(target_width, target_height))| {
             let img_view = image.as_array();
             let (src_height, src_width, src_channels) = img_view.dim();
@@ -342,13 +372,13 @@ pub fn batch_resize_images_zero_copy<'py>(
 
     let results = results.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
 
-    // Convert to PyArray3
+    // Convert to PyArray3 and return as Python list
     let py_results: Vec<Bound<'py, PyArray3<u8>>> = results
         .iter()
         .map(|array| PyArray3::from_array_bound(py, array))
         .collect();
 
-    Ok(py_results)
+    Ok(PyList::new_bound(py, py_results).into_any())
 }
 
 /// Ultra-fast OpenCV-powered resize using zero-copy Mat headers
@@ -427,6 +457,111 @@ unsafe fn resize_raw_buffer(
     _output_buffer: Vec<u8>,
 ) -> Result<ndarray::Array3<u8>, String> {
     Err("OpenCV feature required for zero-copy resize".to_string())
+}
+
+/// Ultra-fast single image resize - DIRECT return, no Vec wrappers
+#[cfg(feature = "opencv")]
+fn resize_single_image_direct<'py>(
+    py: Python<'py>,
+    image: &PyReadonlyArray3<u8>,
+    target_size: (usize, usize),
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    use opencv::{
+        core::Mat,
+        imgproc::{resize, INTER_LINEAR},
+        prelude::*,
+    };
+
+    let img_view = image.as_array();
+    let (src_height, src_width, channels) = img_view.dim();
+    let (target_width, target_height) = target_size;
+
+    if channels != 3 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Only 3-channel RGB images are supported",
+        ));
+    }
+
+    // Create source Mat header pointing directly to input data (zero-copy)
+    let src_mat = unsafe {
+        Mat::new_rows_cols_with_data_unsafe(
+            src_height as i32,
+            src_width as i32,
+            opencv::core::CV_8UC3,
+            img_view.as_ptr() as *mut std::ffi::c_void,
+            opencv::core::Mat_AUTO_STEP,
+        )
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create source Mat: {}", e)))?
+    };
+
+    // Pre-allocate result array
+    let mut result = ndarray::Array3::<u8>::zeros((target_height, target_width, 3));
+
+    // Create destination Mat header pointing directly to result memory (zero-copy)
+    let mut dst_mat = unsafe {
+        Mat::new_rows_cols_with_data_unsafe(
+            target_height as i32,
+            target_width as i32,
+            opencv::core::CV_8UC3,
+            result.as_mut_ptr() as *mut std::ffi::c_void,
+            opencv::core::Mat_AUTO_STEP,
+        )
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create destination Mat: {}", e)))?
+    };
+
+    // OpenCV writes directly into our result array - MAXIMUM PERFORMANCE!
+    resize(
+        &src_mat,
+        &mut dst_mat,
+        opencv::core::Size::new(target_width as i32, target_height as i32),
+        0.0,
+        0.0,
+        INTER_LINEAR,
+    )
+    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("OpenCV resize failed: {}", e)))?;
+
+    // DIRECT return - no Vec wrapper overhead!
+    Ok(PyArray3::from_array_bound(py, &result))
+}
+
+#[cfg(not(feature = "opencv"))]
+fn resize_single_image_direct<'py>(
+    _py: Python<'py>,
+    _image: &PyReadonlyArray3<u8>,
+    _target_size: (usize, usize),
+) -> PyResult<Bound<'py, PyArray3<u8>>> {
+    Err(pyo3::exceptions::PyRuntimeError::new_err(
+        "OpenCV feature required for single image resize",
+    ))
+}
+
+/// Helper function to detect if input is a numpy array (single image)
+fn is_numpy_array(obj: &Bound<PyAny>) -> bool {
+    use pyo3::types::PyList;
+    // If it's a list, it's batch mode. If it's not a list, assume it's a numpy array
+    !obj.is_instance_of::<PyList>()
+}
+
+/// Helper function to detect if input is a tuple of two numbers (single size)
+fn is_tuple_or_list_of_two(obj: &Bound<PyAny>) -> bool {
+    use pyo3::types::{PyList, PyTuple};
+
+    // Check if it's a tuple of length 2
+    if let Ok(tuple) = obj.downcast::<PyTuple>() {
+        return tuple.len() == 2;
+    }
+
+    // Check if it's a list of length 2 containing numbers (not nested lists)
+    if let Ok(list) = obj.downcast::<PyList>() {
+        if list.len() == 2 {
+            // Check if first element is a number (not a nested list/tuple)
+            if let Ok(first) = list.get_item(0) {
+                return !first.is_instance_of::<PyList>() && !first.is_instance_of::<PyTuple>();
+            }
+        }
+    }
+
+    false
 }
 
 // TSR CROPPING OPERATIONS (BENCHMARK WINNERS)
