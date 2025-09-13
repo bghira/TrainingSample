@@ -47,7 +47,7 @@ profile = "black"
 use_parentheses = true
 
 [tool.maturin]
-features = ["pyo3/extension-module", "python-bindings", "opencv"]
+features = ["pyo3/extension-module", "python-bindings", "opencv", "simd"]
 module-name = "trainingsample"
 
 [tool.poetry.group.dev.dependencies]
