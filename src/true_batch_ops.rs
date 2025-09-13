@@ -121,6 +121,7 @@ impl TrueBatchProcessor {
 
     /// Create ndarray view directly from Mat memory - ZERO COPY OUTPUT!
     #[cfg(feature = "opencv")]
+    #[allow(dead_code)]
     fn mat_to_ndarray(&self, mat: &Mat) -> Result<Array3<u8>> {
         let height = mat.rows() as usize;
         let width = mat.cols() as usize;
@@ -312,6 +313,7 @@ impl TrueBatchProcessor {
     }
 
     /// TRUE batch channel swapping with SIMD
+    #[allow(dead_code)]
     fn true_batch_channel_swap(&self, images: &[ArrayView3<u8>]) -> Result<Vec<Array3<u8>>> {
         if self.use_parallel && images.len() >= self.chunk_size {
             // Process in parallel chunks
@@ -329,6 +331,7 @@ impl TrueBatchProcessor {
     }
 
     /// Simple channel swap leveraging memory bandwidth
+    #[allow(dead_code)]
     fn simple_channel_swap_single(&self, image: &ArrayView3<u8>) -> Result<Array3<u8>> {
         let (height, width, channels) = image.dim();
         if channels != 3 {
@@ -350,6 +353,7 @@ impl TrueBatchProcessor {
         Ok(result)
     }
 
+    #[allow(dead_code)]
     fn true_batch_rgb_to_gray(&self, images: &[ArrayView3<u8>]) -> Result<Vec<Array3<u8>>> {
         if self.use_parallel && images.len() >= self.chunk_size {
             images
@@ -364,6 +368,7 @@ impl TrueBatchProcessor {
         }
     }
 
+    #[allow(dead_code)]
     fn rgb_to_gray_single(&self, image: &ArrayView3<u8>) -> Result<Array3<u8>> {
         let (height, width, channels) = image.dim();
         if channels != 3 {
@@ -391,6 +396,7 @@ impl TrueBatchProcessor {
         Ok(result)
     }
 
+    #[allow(dead_code)]
     fn fallback_conversion(
         &self,
         _image: &ArrayView3<u8>,

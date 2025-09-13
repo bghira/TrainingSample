@@ -126,7 +126,7 @@ unsafe fn calculate_luminance_raw_buffer_simd(
     #[cfg(not(target_arch = "aarch64"))]
     {
         // Fallback to scalar on non-ARM architectures
-        return calculate_luminance_raw_buffer_scalar(rgb_ptr, width, height, _channels);
+        calculate_luminance_raw_buffer_scalar(rgb_ptr, width, height, _channels)
     }
 }
 

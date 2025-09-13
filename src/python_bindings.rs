@@ -252,7 +252,7 @@ pub fn batch_resize_images_zero_copy<'py>(
     images: &Bound<'py, PyAny>,
     target_sizes: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    use pyo3::types::{PyList, PyTuple};
+    use pyo3::types::PyList;
     use rayon::prelude::*;
 
     // INTELLIGENT OVERLOADING: Detect single vs batch input
@@ -554,7 +554,7 @@ fn resize_single_image_direct<'py>(
 
 /// Helper function to detect if input is a numpy array (single image)
 fn is_numpy_array(obj: &Bound<PyAny>) -> bool {
-    use pyo3::types::{PyList, PyTuple};
+    use pyo3::types::PyList;
     // If it's a list, it's batch mode. If it's not a list, assume it's a numpy array
     !obj.is_instance_of::<PyList>()
 }
