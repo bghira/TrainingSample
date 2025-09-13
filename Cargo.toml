@@ -17,6 +17,9 @@ rayon = "1.8"
 # SIMD optimizations
 wide = {version = "0.7", optional = true}
 
+[dev-dependencies]
+criterion = {version = "0.5", features = ["html_reports"]}
+
 [features]
 default = ["simd"]
 metal = ["dep:metal", "dep:objc"]
