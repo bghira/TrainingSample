@@ -1,3 +1,4 @@
+#[allow(unused_imports)]
 use super::*;
 use ndarray::{Array3, Array4};
 
@@ -5,6 +6,7 @@ fn create_test_image() -> Array3<u8> {
     Array3::from_shape_fn((100, 100, 3), |(y, x, c)| ((x + y + c * 50) % 256) as u8)
 }
 
+#[allow(dead_code)]
 fn create_test_video() -> Array4<u8> {
     Array4::from_shape_fn((5, 50, 50, 3), |(f, y, x, c)| {
         ((x + y + c * 50 + f * 10) % 256) as u8
@@ -13,9 +15,11 @@ fn create_test_video() -> Array4<u8> {
 
 #[cfg(test)]
 mod x86_optimization_tests {
+    #[allow(unused_imports)]
     use super::*;
     use ndarray::Array3;
 
+    #[allow(dead_code)]
     fn create_large_test_image() -> Array3<u8> {
         Array3::from_shape_fn((256, 256, 3), |(y, x, c)| ((x + y + c * 85) % 256) as u8)
     }
@@ -53,6 +57,7 @@ mod x86_optimization_tests {
 
 #[cfg(test)]
 mod cropping_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -101,6 +106,7 @@ mod cropping_tests {
 
 #[cfg(test)]
 mod luminance_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -135,6 +141,7 @@ mod luminance_tests {
 
 #[cfg(test)]
 mod resize_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -172,6 +179,7 @@ mod resize_tests {
 
 #[cfg(test)]
 mod batch_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -229,6 +237,7 @@ mod batch_tests {
 
 #[cfg(test)]
 mod integration_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -266,6 +275,7 @@ mod integration_tests {
 
 #[cfg(test)]
 mod edge_case_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[test]
@@ -299,6 +309,7 @@ mod edge_case_tests {
 // OpenCV specific tests
 #[cfg(test)]
 mod opencv_tests {
+    #[allow(unused_imports)]
     use super::*;
 
     #[cfg(feature = "opencv")]

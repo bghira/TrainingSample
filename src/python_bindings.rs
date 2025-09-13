@@ -247,13 +247,25 @@ pub fn batch_calculate_luminance_zero_copy(
 
 #[cfg(all(feature = "python-bindings", feature = "opencv"))]
 #[pyfunction]
+#[pyo3(signature = (images, target_sizes, interpolation=None))]
 pub fn batch_resize_images_zero_copy<'py>(
     py: Python<'py>,
     images: &Bound<'py, PyAny>,
     target_sizes: &Bound<'py, PyAny>,
+    interpolation: Option<i32>,
 ) -> PyResult<Bound<'py, PyAny>> {
+    use crate::cv_compat::imgproc::ResizeInterpolation;
     use pyo3::types::PyList;
     use rayon::prelude::*;
+
+    // Convert interpolation parameter (default to bilinear if not specified)
+    let interp = match interpolation.unwrap_or(1) {
+        0 => ResizeInterpolation::InterNearest,
+        1 => ResizeInterpolation::InterLinear,
+        2 => ResizeInterpolation::InterCubic,
+        4 => ResizeInterpolation::InterLanczos4,
+        _ => ResizeInterpolation::InterLinear, // Default fallback
+    };
 
     // INTELLIGENT OVERLOADING: Detect single vs batch input
     let is_single_image = is_numpy_array(images);
@@ -263,7 +275,7 @@ pub fn batch_resize_images_zero_copy<'py>(
         // SINGLE IMAGE PATH: Direct return, zero wrapper overhead!
         let image_array = images.extract::<PyReadonlyArray3<u8>>()?;
         let size_tuple = target_sizes.extract::<(usize, usize)>()?;
-        let result = resize_single_image_direct(py, &image_array, size_tuple)?;
+        let result = resize_single_image_direct(py, &image_array, size_tuple, interp)?;
         return Ok(result.into_any());
     }
 
@@ -326,6 +338,14 @@ pub fn batch_resize_images_zero_copy<'py>(
     // Adaptive processing: use parallel only for larger batches to avoid threading overhead
     let use_parallel = batch_size >= 8; // Threshold where parallel processing becomes beneficial
 
+    // Convert interpolation to OpenCV constant
+    let cv_interpolation = match interp {
+        ResizeInterpolation::InterNearest => opencv::imgproc::INTER_NEAREST,
+        ResizeInterpolation::InterLinear => opencv::imgproc::INTER_LINEAR,
+        ResizeInterpolation::InterCubic => opencv::imgproc::INTER_CUBIC,
+        ResizeInterpolation::InterLanczos4 => opencv::imgproc::INTER_LANCZOS4,
+    };
+
     let results: Result<Vec<ndarray::Array3<u8>>, String> = if use_parallel {
         // Pre-allocate all buffers on main thread to avoid lock contention
         let mut buffers = Vec::with_capacity(batch_size);
@@ -347,6 +367,7 @@ pub fn batch_resize_images_zero_copy<'py>(
                     (data.src_height, data.src_width, data.src_channels),
                     (data.target_height, data.target_width),
                     output_buffer,
+                    cv_interpolation,
                 )
             })
             .collect::<Result<Vec<_>, _>>()
@@ -364,6 +385,7 @@ pub fn batch_resize_images_zero_copy<'py>(
                     (data.src_height, data.src_width, data.src_channels),
                     (data.target_height, data.target_width),
                     output_buffer,
+                    cv_interpolation,
                 )
             };
             match result {
@@ -402,11 +424,9 @@ unsafe fn resize_raw_buffer(
     src_shape: (usize, usize, usize), // (height, width, channels)
     target_shape: (usize, usize),     // (height, width)
     mut output_buffer: Vec<u8>,
+    interpolation: i32, // OpenCV interpolation flag
 ) -> Result<ndarray::Array3<u8>, String> {
-    use opencv::{
-        core::Mat,
-        imgproc::{resize, INTER_LINEAR},
-    };
+    use opencv::{core::Mat, imgproc::resize};
 
     let (src_height, src_width, channels) = src_shape;
     let (target_height, target_width) = target_shape;
@@ -448,7 +468,7 @@ unsafe fn resize_raw_buffer(
         opencv::core::Size::new(target_width as i32, target_height as i32),
         0.0,
         0.0,
-        INTER_LINEAR,
+        interpolation,
     )
     .map_err(|e| format!("OpenCV resize failed: {}", e))?;
 
@@ -474,10 +494,11 @@ fn resize_single_image_direct<'py>(
     py: Python<'py>,
     image: &PyReadonlyArray3<u8>,
     target_size: (usize, usize),
+    interpolation: crate::cv_compat::imgproc::ResizeInterpolation,
 ) -> PyResult<Bound<'py, PyArray3<u8>>> {
     use opencv::{
         core::Mat,
-        imgproc::{resize, INTER_LINEAR},
+        imgproc::{resize, INTER_CUBIC, INTER_LANCZOS4, INTER_LINEAR, INTER_NEAREST},
     };
 
     let img_view = image.as_array();
@@ -524,6 +545,15 @@ fn resize_single_image_direct<'py>(
         })?
     };
 
+    // Convert ResizeInterpolation to OpenCV flag
+    use crate::cv_compat::imgproc::ResizeInterpolation;
+    let cv_interpolation = match interpolation {
+        ResizeInterpolation::InterNearest => INTER_NEAREST,
+        ResizeInterpolation::InterLinear => INTER_LINEAR,
+        ResizeInterpolation::InterCubic => INTER_CUBIC,
+        ResizeInterpolation::InterLanczos4 => INTER_LANCZOS4,
+    };
+
     // OpenCV writes directly into our result array - MAXIMUM PERFORMANCE!
     resize(
         &src_mat,
@@ -531,7 +561,7 @@ fn resize_single_image_direct<'py>(
         opencv::core::Size::new(target_width as i32, target_height as i32),
         0.0,
         0.0,
-        INTER_LINEAR,
+        cv_interpolation,
     )
     .map_err(|e| {
         pyo3::exceptions::PyRuntimeError::new_err(format!("OpenCV resize failed: {}", e))
@@ -621,16 +651,36 @@ impl ResizeIterator {
 /// NEW ITERATOR API: Zero-copy batch resize with lazy conversion
 #[cfg(all(feature = "python-bindings", feature = "opencv"))]
 #[pyfunction]
+#[pyo3(signature = (images, target_sizes, interpolation=None))]
 pub fn batch_resize_images_iterator<'py>(
     py: Python<'py>,
     images: Vec<PyReadonlyArray3<u8>>,
     target_sizes: Vec<(usize, usize)>,
+    interpolation: Option<i32>,
 ) -> PyResult<Bound<'py, ResizeIterator>> {
+    use crate::cv_compat::imgproc::ResizeInterpolation;
     use opencv::{
         core::Mat,
-        imgproc::{resize, INTER_LINEAR},
+        imgproc::{resize, INTER_CUBIC, INTER_LANCZOS4, INTER_LINEAR, INTER_NEAREST},
     };
     use rayon::prelude::*;
+
+    // Convert interpolation parameter (default to bilinear if not specified)
+    let interp = match interpolation.unwrap_or(1) {
+        0 => ResizeInterpolation::InterNearest,
+        1 => ResizeInterpolation::InterLinear,
+        2 => ResizeInterpolation::InterCubic,
+        4 => ResizeInterpolation::InterLanczos4,
+        _ => ResizeInterpolation::InterLinear, // Default fallback
+    };
+
+    // Convert to OpenCV constant
+    let cv_interpolation = match interp {
+        ResizeInterpolation::InterNearest => INTER_NEAREST,
+        ResizeInterpolation::InterLinear => INTER_LINEAR,
+        ResizeInterpolation::InterCubic => INTER_CUBIC,
+        ResizeInterpolation::InterLanczos4 => INTER_LANCZOS4,
+    };
 
     let batch_size = images.len();
     if batch_size != target_sizes.len() {
@@ -737,7 +787,7 @@ pub fn batch_resize_images_iterator<'py>(
                         ),
                         0.0,
                         0.0,
-                        INTER_LINEAR,
+                        cv_interpolation,
                     )
                     .map_err(|e| format!("OpenCV resize failed: {}", e))?;
 
@@ -800,7 +850,7 @@ pub fn batch_resize_images_iterator<'py>(
                     opencv::core::Size::new(data.target_width as i32, data.target_height as i32),
                     0.0,
                     0.0,
-                    INTER_LINEAR,
+                    cv_interpolation,
                 ) {
                     return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
                         "OpenCV resize failed: {}",
