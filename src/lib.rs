@@ -138,5 +138,11 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
     // TRUE BATCH PROCESSING API (actually batched, not just parallel loops)
     m.add_class::<crate::python_bindings::PyTrueBatchProcessor>()?;
 
+    // INTERPOLATION CONSTANTS (OpenCV-compatible)
+    m.add("INTER_NEAREST", 0)?;
+    m.add("INTER_LINEAR", 1)?;
+    m.add("INTER_CUBIC", 2)?;
+    m.add("INTER_LANCZOS4", 4)?;
+
     Ok(())
 }

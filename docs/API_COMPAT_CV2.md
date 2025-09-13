@@ -24,7 +24,8 @@ import trainingsample as tsr
 # 1.12x FASTER than cv2.resize() - leveraging OpenCV C++ without binding overhead
 result = tsr.batch_resize_images_zero_copy(
     img,         # np.ndarray - single image
-    target_size  # (width, height) - target dimensions
+    target_size, # (width, height) - target dimensions
+    interpolation=tsr.INTER_LINEAR  # Optional: INTER_NEAREST, INTER_LINEAR (default), INTER_CUBIC, INTER_LANCZOS4
 )
 # Direct numpy array return, zero wrapper overhead, intelligent dispatch
 ```
@@ -34,14 +35,34 @@ result = tsr.batch_resize_images_zero_copy(
 # BATCH LIST API: 2.4x faster than OpenCV individual calls
 results = tsr.batch_resize_images_zero_copy(
     images,      # List[np.ndarray] - batch of images
-    target_sizes # List[(width, height)] - target dimensions
+    target_sizes, # List[(width, height)] - target dimensions
+    interpolation=tsr.INTER_LINEAR  # Optional: choose interpolation method
 )
 # Returns: List[np.ndarray] - perfect for immediate processing
 
 # ITERATOR API: True zero-copy with lazy conversion (memory efficient)
-for result in tsr.batch_resize_images_iterator(images, target_sizes):
+for result in tsr.batch_resize_images_iterator(images, target_sizes, interpolation=tsr.INTER_CUBIC):
     process(result)  # Convert only when accessed, supports early termination
 # 2.3x faster than OpenCV, minimal memory footprint
+```
+
+#### 🎯 Interpolation Methods
+```python
+# Available interpolation constants (OpenCV-compatible):
+tsr.INTER_NEAREST   # Fast, blocky - good for masks/labels
+tsr.INTER_LINEAR    # Default - good balance of speed and quality
+tsr.INTER_CUBIC     # High quality, slower - best for upsampling
+tsr.INTER_LANCZOS4  # Best quality, slowest - professional upsampling
+
+# Usage examples:
+fast_resize = tsr.batch_resize_images_zero_copy(images, sizes, tsr.INTER_NEAREST)
+quality_resize = tsr.batch_resize_images_zero_copy(images, sizes, tsr.INTER_LANCZOS4)
+
+# Performance vs Quality Trade-offs:
+# INTER_NEAREST:  ~4x faster than LANCZOS4, acceptable for downsampling
+# INTER_LINEAR:   ~2x faster than LANCZOS4, good general purpose (default)
+# INTER_CUBIC:    ~1.5x faster than LANCZOS4, good for upsampling
+# INTER_LANCZOS4: Best quality, use for professional image processing
 ```
 
 ### Batch Cropping (Zero-Copy)
