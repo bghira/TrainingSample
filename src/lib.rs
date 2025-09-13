@@ -70,6 +70,11 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
         crate::python_bindings::batch_calculate_luminance_zero_copy,
         m
     )?)?;
+    #[cfg(feature = "opencv")]
+    m.add_function(wrap_pyfunction!(
+        crate::python_bindings::batch_resize_images_zero_copy,
+        m
+    )?)?;
 
     // TSR CROPPING OPERATIONS (BENCHMARK WINNERS)
     m.add_function(wrap_pyfunction!(load_image_batch, m)?)?;

@@ -241,6 +241,194 @@ pub fn batch_calculate_luminance_zero_copy(
     Ok(luminances)
 }
 
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
+#[pyfunction]
+pub fn batch_resize_images_zero_copy<'py>(
+    py: Python<'py>,
+    images: Vec<PyReadonlyArray3<u8>>,
+    target_sizes: Vec<(usize, usize)>, // (width, height)
+) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
+    use rayon::prelude::*;
+
+    let batch_size = images.len();
+    if batch_size != target_sizes.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Images and target_sizes length mismatch",
+        ));
+    }
+
+    // Extract raw pointers and dimensions first (on main thread)
+    #[derive(Clone, Copy)]
+    struct ResizeData {
+        src_ptr: *const u8,
+        src_height: usize,
+        src_width: usize,
+        src_channels: usize,
+        target_width: usize,
+        target_height: usize,
+    }
+
+    unsafe impl Send for ResizeData {}
+    unsafe impl Sync for ResizeData {}
+
+    let resize_data: Vec<ResizeData> = images
+        .iter()
+        .zip(target_sizes.iter())
+        .map(|(image, &(target_width, target_height))| {
+            let img_view = image.as_array();
+            let (src_height, src_width, src_channels) = img_view.dim();
+            let src_ptr = img_view.as_ptr();
+            ResizeData {
+                src_ptr,
+                src_height,
+                src_width,
+                src_channels,
+                target_width,
+                target_height,
+            }
+        })
+        .collect();
+
+    // Adaptive processing: use parallel only for larger batches to avoid threading overhead
+    let use_parallel = batch_size >= 8; // Threshold where parallel processing becomes beneficial
+
+    let results: Result<Vec<ndarray::Array3<u8>>, String> = if use_parallel {
+        // Pre-allocate all buffers on main thread to avoid lock contention
+        let mut buffers = Vec::with_capacity(batch_size);
+        {
+            let mut pool = BUFFER_POOL.lock().unwrap();
+            for data in &resize_data {
+                let buffer = pool.get_buffer(data.target_height, data.target_width, data.src_channels);
+                buffers.push(buffer);
+            }
+        } // Release lock before parallel processing
+
+        resize_data
+            .par_iter()
+            .zip(buffers.into_par_iter())
+            .map(|(data, output_buffer)| {
+                unsafe {
+                    resize_raw_buffer(
+                        data.src_ptr,
+                        (data.src_height, data.src_width, data.src_channels),
+                        (data.target_height, data.target_width),
+                        output_buffer,
+                    )
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()
+    } else {
+        // Sequential processing for small batches - avoid parallel overhead
+        let mut pool = BUFFER_POOL.lock().unwrap();
+        let mut results = Vec::with_capacity(batch_size);
+
+        for data in &resize_data {
+            let output_buffer = pool.get_buffer(data.target_height, data.target_width, data.src_channels);
+            let result = unsafe {
+                resize_raw_buffer(
+                    data.src_ptr,
+                    (data.src_height, data.src_width, data.src_channels),
+                    (data.target_height, data.target_width),
+                    output_buffer,
+                )
+            };
+            match result {
+                Ok(array) => results.push(array),
+                Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e))),
+            }
+        }
+        Ok(results)
+    };
+
+    let results = results.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
+
+    // Convert to PyArray3
+    let py_results: Vec<Bound<'py, PyArray3<u8>>> = results
+        .iter()
+        .map(|array| PyArray3::from_array_bound(py, array))
+        .collect();
+
+    Ok(py_results)
+}
+
+/// Ultra-fast OpenCV-powered resize using zero-copy Mat headers
+///
+/// # Safety
+/// - `src_ptr` must be valid for reads of at least `src_height * src_width * channels` bytes
+/// - `output_buffer` must be valid for writes of at least `target_height * target_width * channels` bytes
+#[cfg(feature = "opencv")]
+unsafe fn resize_raw_buffer(
+    src_ptr: *const u8,
+    src_shape: (usize, usize, usize), // (height, width, channels)
+    target_shape: (usize, usize), // (height, width)
+    mut output_buffer: Vec<u8>,
+) -> Result<ndarray::Array3<u8>, String> {
+    use opencv::{
+        core::Mat,
+        imgproc::{resize, INTER_LINEAR},
+        prelude::*,
+    };
+
+    let (src_height, src_width, channels) = src_shape;
+    let (target_height, target_width) = target_shape;
+
+    if channels != 3 {
+        return Err("Only 3-channel RGB images are supported".to_string());
+    }
+
+    // Buffer should already be the right size from pool, but ensure it
+    let required_size = target_height * target_width * channels;
+    if output_buffer.len() != required_size {
+        output_buffer.resize(required_size, 0);
+    }
+
+    // ZERO-COPY: Create Mat header pointing directly to source memory
+    let src_mat = Mat::new_rows_cols_with_data_unsafe(
+        src_height as i32,
+        src_width as i32,
+        opencv::core::CV_8UC3,
+        src_ptr as *mut std::ffi::c_void,
+        opencv::core::Mat_AUTO_STEP,
+    )
+    .map_err(|e| format!("Failed to create source Mat: {}", e))?;
+
+    // ZERO-COPY: Create Mat header pointing directly to output buffer
+    let mut dst_mat = Mat::new_rows_cols_with_data_unsafe(
+        target_height as i32,
+        target_width as i32,
+        opencv::core::CV_8UC3,
+        output_buffer.as_mut_ptr() as *mut std::ffi::c_void,
+        opencv::core::Mat_AUTO_STEP,
+    )
+    .map_err(|e| format!("Failed to create destination Mat: {}", e))?;
+
+    // OpenCV writes directly into our output buffer - MAXIMUM PERFORMANCE!
+    resize(
+        &src_mat,
+        &mut dst_mat,
+        opencv::core::Size::new(target_width as i32, target_height as i32),
+        0.0,
+        0.0,
+        INTER_LINEAR,
+    )
+    .map_err(|e| format!("OpenCV resize failed: {}", e))?;
+
+    // Convert buffer back to ndarray
+    ndarray::Array3::from_shape_vec((target_height, target_width, channels), output_buffer)
+        .map_err(|e| format!("Shape error: {}", e))
+}
+
+/// Fallback resize for when OpenCV is not available
+#[cfg(not(feature = "opencv"))]
+unsafe fn resize_raw_buffer(
+    _src_ptr: *const u8,
+    _src_shape: (usize, usize, usize),
+    _target_shape: (usize, usize),
+    _output_buffer: Vec<u8>,
+) -> Result<ndarray::Array3<u8>, String> {
+    Err("OpenCV feature required for zero-copy resize".to_string())
+}
+
 // TSR CROPPING OPERATIONS (BENCHMARK WINNERS)
 
 #[cfg(feature = "python-bindings")]
