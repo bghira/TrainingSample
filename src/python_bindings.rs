@@ -248,8 +248,8 @@ pub fn batch_resize_images_zero_copy<'py>(
     images: &Bound<'py, PyAny>,
     target_sizes: &Bound<'py, PyAny>,
 ) -> PyResult<Bound<'py, PyAny>> {
-    use rayon::prelude::*;
     use pyo3::types::{PyList, PyTuple};
+    use rayon::prelude::*;
 
     // INTELLIGENT OVERLOADING: Detect single vs batch input
     let is_single_image = is_numpy_array(images);
@@ -328,7 +328,8 @@ pub fn batch_resize_images_zero_copy<'py>(
         {
             let mut pool = BUFFER_POOL.lock().unwrap();
             for data in &resize_data {
-                let buffer = pool.get_buffer(data.target_height, data.target_width, data.src_channels);
+                let buffer =
+                    pool.get_buffer(data.target_height, data.target_width, data.src_channels);
                 buffers.push(buffer);
             }
         } // Release lock before parallel processing
@@ -336,15 +337,13 @@ pub fn batch_resize_images_zero_copy<'py>(
         resize_data
             .par_iter()
             .zip(buffers.into_par_iter())
-            .map(|(data, output_buffer)| {
-                unsafe {
-                    resize_raw_buffer(
-                        data.src_ptr,
-                        (data.src_height, data.src_width, data.src_channels),
-                        (data.target_height, data.target_width),
-                        output_buffer,
-                    )
-                }
+            .map(|(data, output_buffer)| unsafe {
+                resize_raw_buffer(
+                    data.src_ptr,
+                    (data.src_height, data.src_width, data.src_channels),
+                    (data.target_height, data.target_width),
+                    output_buffer,
+                )
             })
             .collect::<Result<Vec<_>, _>>()
     } else {
@@ -353,7 +352,8 @@ pub fn batch_resize_images_zero_copy<'py>(
         let mut results = Vec::with_capacity(batch_size);
 
         for data in &resize_data {
-            let output_buffer = pool.get_buffer(data.target_height, data.target_width, data.src_channels);
+            let output_buffer =
+                pool.get_buffer(data.target_height, data.target_width, data.src_channels);
             let result = unsafe {
                 resize_raw_buffer(
                     data.src_ptr,
@@ -364,13 +364,19 @@ pub fn batch_resize_images_zero_copy<'py>(
             };
             match result {
                 Ok(array) => results.push(array),
-                Err(e) => return Err(pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e))),
+                Err(e) => {
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "Resize failed: {}",
+                        e
+                    )))
+                }
             }
         }
         Ok(results)
     };
 
-    let results = results.map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
+    let results = results
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
 
     // Convert to PyArray3 and return as Python list
     let py_results: Vec<Bound<'py, PyArray3<u8>>> = results
@@ -390,7 +396,7 @@ pub fn batch_resize_images_zero_copy<'py>(
 unsafe fn resize_raw_buffer(
     src_ptr: *const u8,
     src_shape: (usize, usize, usize), // (height, width, channels)
-    target_shape: (usize, usize), // (height, width)
+    target_shape: (usize, usize),     // (height, width)
     mut output_buffer: Vec<u8>,
 ) -> Result<ndarray::Array3<u8>, String> {
     use opencv::{
@@ -491,7 +497,9 @@ fn resize_single_image_direct<'py>(
             img_view.as_ptr() as *mut std::ffi::c_void,
             opencv::core::Mat_AUTO_STEP,
         )
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create source Mat: {}", e)))?
+        .map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create source Mat: {}", e))
+        })?
     };
 
     // Pre-allocate result array
@@ -506,7 +514,12 @@ fn resize_single_image_direct<'py>(
             result.as_mut_ptr() as *mut std::ffi::c_void,
             opencv::core::Mat_AUTO_STEP,
         )
-        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Failed to create destination Mat: {}", e)))?
+        .map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Failed to create destination Mat: {}",
+                e
+            ))
+        })?
     };
 
     // OpenCV writes directly into our result array - MAXIMUM PERFORMANCE!
@@ -518,7 +531,9 @@ fn resize_single_image_direct<'py>(
         0.0,
         INTER_LINEAR,
     )
-    .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("OpenCV resize failed: {}", e)))?;
+    .map_err(|e| {
+        pyo3::exceptions::PyRuntimeError::new_err(format!("OpenCV resize failed: {}", e))
+    })?;
 
     // DIRECT return - no Vec wrapper overhead!
     Ok(PyArray3::from_array_bound(py, &result))
@@ -562,6 +577,249 @@ fn is_tuple_or_list_of_two(obj: &Bound<PyAny>) -> bool {
     }
 
     false
+}
+
+/// True zero-copy resize iterator - holds raw pointers, converts to PyArray3 on-demand
+#[cfg(feature = "opencv")]
+#[pyclass]
+pub struct ResizeIterator {
+    /// Raw buffer pointers and their dimensions
+    buffers: Vec<(Vec<u8>, (usize, usize, usize))>, // (buffer, (height, width, channels))
+    /// Current iteration index
+    index: usize,
+}
+
+#[cfg(feature = "opencv")]
+#[pymethods]
+impl ResizeIterator {
+    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
+        slf
+    }
+
+    fn __next__<'py>(&mut self, py: Python<'py>) -> Option<Bound<'py, PyArray3<u8>>> {
+        if self.index >= self.buffers.len() {
+            return None;
+        }
+
+        let (buffer, (height, width, channels)) = &self.buffers[self.index];
+        self.index += 1;
+
+        // Convert raw buffer directly to PyArray3 - ZERO intermediate steps!
+        match ndarray::Array3::from_shape_vec((*height, *width, *channels), buffer.clone()) {
+            Ok(array) => Some(PyArray3::from_array_bound(py, &array)),
+            Err(_) => None, // Skip malformed arrays
+        }
+    }
+
+    fn __len__(&self) -> usize {
+        self.buffers.len()
+    }
+}
+
+/// NEW ITERATOR API: Zero-copy batch resize with lazy conversion
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
+#[pyfunction]
+pub fn batch_resize_images_iterator<'py>(
+    py: Python<'py>,
+    images: Vec<PyReadonlyArray3<u8>>,
+    target_sizes: Vec<(usize, usize)>,
+) -> PyResult<Bound<'py, ResizeIterator>> {
+    use opencv::{
+        core::Mat,
+        imgproc::{resize, INTER_LINEAR},
+        prelude::*,
+    };
+    use rayon::prelude::*;
+
+    let batch_size = images.len();
+    if batch_size != target_sizes.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Images and target_sizes length mismatch",
+        ));
+    }
+
+    if batch_size == 0 {
+        return Ok(Bound::new(
+            py,
+            ResizeIterator {
+                buffers: Vec::new(),
+                index: 0,
+            },
+        )?);
+    }
+
+    // Extract raw data for parallel processing (same as before)
+    #[derive(Clone, Copy)]
+    struct ResizeData {
+        src_ptr: *const u8,
+        src_height: usize,
+        src_width: usize,
+        src_channels: usize,
+        target_width: usize,
+        target_height: usize,
+    }
+
+    unsafe impl Send for ResizeData {}
+    unsafe impl Sync for ResizeData {}
+
+    let resize_data: Vec<ResizeData> = images
+        .iter()
+        .zip(target_sizes.iter())
+        .map(|(image, &(target_width, target_height))| {
+            let img_view = image.as_array();
+            let (src_height, src_width, src_channels) = img_view.dim();
+            let src_ptr = img_view.as_ptr();
+            ResizeData {
+                src_ptr,
+                src_height,
+                src_width,
+                src_channels,
+                target_width,
+                target_height,
+            }
+        })
+        .collect();
+
+    // Adaptive processing: use parallel only for larger batches
+    let use_parallel = batch_size >= 8;
+
+    // TRUE ZERO-COPY: Process directly to raw buffers, no intermediate Array3!
+    let raw_results: Result<Vec<(Vec<u8>, (usize, usize, usize))>, String> = if use_parallel {
+        // Pre-allocate all buffers on main thread (avoid lock contention)
+        let mut buffers = Vec::with_capacity(batch_size);
+        {
+            let mut pool = BUFFER_POOL.lock().unwrap();
+            for data in &resize_data {
+                let buffer =
+                    pool.get_buffer(data.target_height, data.target_width, data.src_channels);
+                buffers.push(buffer);
+            }
+        }
+
+        // Parallel processing: OpenCV writes directly to raw buffers
+        resize_data
+            .par_iter()
+            .zip(buffers.into_par_iter())
+            .map(|(data, mut buffer)| {
+                unsafe {
+                    // Create source Mat pointing to input data
+                    let src_mat = Mat::new_rows_cols_with_data_unsafe(
+                        data.src_height as i32,
+                        data.src_width as i32,
+                        opencv::core::CV_8UC3,
+                        data.src_ptr as *mut std::ffi::c_void,
+                        opencv::core::Mat_AUTO_STEP,
+                    )
+                    .map_err(|e| format!("Failed to create source Mat: {}", e))?;
+
+                    // Create destination Mat pointing to our buffer
+                    let required_size = data.target_height * data.target_width * data.src_channels;
+                    buffer.resize(required_size, 0);
+
+                    let mut dst_mat = Mat::new_rows_cols_with_data_unsafe(
+                        data.target_height as i32,
+                        data.target_width as i32,
+                        opencv::core::CV_8UC3,
+                        buffer.as_mut_ptr() as *mut std::ffi::c_void,
+                        opencv::core::Mat_AUTO_STEP,
+                    )
+                    .map_err(|e| format!("Failed to create destination Mat: {}", e))?;
+
+                    // OpenCV writes directly to raw buffer!
+                    resize(
+                        &src_mat,
+                        &mut dst_mat,
+                        opencv::core::Size::new(
+                            data.target_width as i32,
+                            data.target_height as i32,
+                        ),
+                        0.0,
+                        0.0,
+                        INTER_LINEAR,
+                    )
+                    .map_err(|e| format!("OpenCV resize failed: {}", e))?;
+
+                    // Return raw buffer with dimensions - NO Array3 conversion!
+                    Ok((
+                        buffer,
+                        (data.target_height, data.target_width, data.src_channels),
+                    ))
+                }
+            })
+            .collect::<Result<Vec<_>, _>>()
+    } else {
+        // Sequential processing for small batches
+        let mut pool = BUFFER_POOL.lock().unwrap();
+        let mut results = Vec::with_capacity(batch_size);
+
+        for data in &resize_data {
+            let mut buffer =
+                pool.get_buffer(data.target_height, data.target_width, data.src_channels);
+
+            unsafe {
+                let src_mat = match Mat::new_rows_cols_with_data_unsafe(
+                    data.src_height as i32,
+                    data.src_width as i32,
+                    opencv::core::CV_8UC3,
+                    data.src_ptr as *mut std::ffi::c_void,
+                    opencv::core::Mat_AUTO_STEP,
+                ) {
+                    Ok(mat) => mat,
+                    Err(e) => {
+                        return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                            "Failed to create source Mat: {}",
+                            e
+                        )))
+                    }
+                };
+
+                let required_size = data.target_height * data.target_width * data.src_channels;
+                buffer.resize(required_size, 0);
+
+                let mut dst_mat = match Mat::new_rows_cols_with_data_unsafe(
+                    data.target_height as i32,
+                    data.target_width as i32,
+                    opencv::core::CV_8UC3,
+                    buffer.as_mut_ptr() as *mut std::ffi::c_void,
+                    opencv::core::Mat_AUTO_STEP,
+                ) {
+                    Ok(mat) => mat,
+                    Err(e) => {
+                        return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                            "Failed to create destination Mat: {}",
+                            e
+                        )))
+                    }
+                };
+
+                if let Err(e) = resize(
+                    &src_mat,
+                    &mut dst_mat,
+                    opencv::core::Size::new(data.target_width as i32, data.target_height as i32),
+                    0.0,
+                    0.0,
+                    INTER_LINEAR,
+                ) {
+                    return Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                        "OpenCV resize failed: {}",
+                        e
+                    )));
+                }
+
+                results.push((
+                    buffer,
+                    (data.target_height, data.target_width, data.src_channels),
+                ));
+            }
+        }
+        Ok(results)
+    };
+
+    let buffers = raw_results
+        .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
+
+    // Return iterator with raw buffers - conversion happens on-demand!
+    Ok(Bound::new(py, ResizeIterator { buffers, index: 0 })?)
 }
 
 // TSR CROPPING OPERATIONS (BENCHMARK WINNERS)

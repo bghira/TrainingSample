@@ -123,6 +123,15 @@ fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<crate::python_bindings::PyVideoWriter>()?;
     m.add_class::<crate::python_bindings::PyCascadeClassifier>()?;
 
+    // ZERO-COPY ITERATOR API (ultimate performance)
+    #[cfg(feature = "opencv")]
+    m.add_class::<crate::python_bindings::ResizeIterator>()?;
+    #[cfg(feature = "opencv")]
+    m.add_function(wrap_pyfunction!(
+        crate::python_bindings::batch_resize_images_iterator,
+        m
+    )?)?;
+
     // HIGH-PERFORMANCE BATCH PROCESSING API
     m.add_class::<crate::python_bindings::PyBatchProcessor>()?;
 
