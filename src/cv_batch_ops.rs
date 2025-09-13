@@ -404,7 +404,7 @@ pub mod benchmarks {
 
         let image_views: Vec<_> = test_images.iter().map(|img| img.view()).collect();
 
-        report.push_str(&format!("🚀 Batch Processing Benchmarks\n"));
+        report.push_str(&"🚀 Batch Processing Benchmarks\n".to_string());
         report.push_str(&format!(
             "Images: {}, Size: {}x{}\n\n",
             num_images, image_size.0, image_size.1
@@ -414,7 +414,7 @@ pub mod benchmarks {
         let (naive_ms, batch_ms, speedup) =
             compare_batch_vs_naive_cvt_color(&image_views, ColorConversionCode::ColorBgr2Rgb, 10);
 
-        report.push_str(&format!("🎨 Color Conversion (BGR→RGB):\n"));
+        report.push_str(&"🎨 Color Conversion (BGR→RGB):\n".to_string());
         report.push_str(&format!("  Naive:  {:.2}ms\n", naive_ms));
         report.push_str(&format!("  Batch:  {:.2}ms\n", batch_ms));
         report.push_str(&format!("  Speedup: {:.2}x\n\n", speedup));
@@ -444,12 +444,12 @@ pub mod benchmarks {
         let batch_resize_ms = start.elapsed().as_millis() as f64;
         let resize_speedup = naive_resize_ms / batch_resize_ms;
 
-        report.push_str(&format!("📐 Resize Operations:\n"));
+        report.push_str(&"📐 Resize Operations:\n".to_string());
         report.push_str(&format!("  Naive:  {:.2}ms\n", naive_resize_ms));
         report.push_str(&format!("  Batch:  {:.2}ms\n", batch_resize_ms));
         report.push_str(&format!("  Speedup: {:.2}x\n\n", resize_speedup));
 
-        report.push_str(&format!("💡 Key Optimizations:\n"));
+        report.push_str(&"💡 Key Optimizations:\n".to_string());
         report.push_str("  ✅ Parallel processing with Rayon\n");
         report.push_str("  ✅ Memory-efficient chunked processing\n");
         report.push_str("  ✅ Cache-optimized grouping by operation parameters\n");

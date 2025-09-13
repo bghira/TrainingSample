@@ -9,9 +9,6 @@ use opencv::{
     prelude::*,
 };
 
-#[cfg(feature = "simd")]
-use wide::u8x16;
-
 /// TRUE batch processor that actually provides batching advantages
 pub struct TrueBatchProcessor {
     pub use_parallel: bool,

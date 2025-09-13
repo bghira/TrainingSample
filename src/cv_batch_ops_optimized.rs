@@ -1,9 +1,9 @@
 use anyhow::Result;
-use ndarray::{Array3, ArrayView3, Axis};
+use ndarray::{Array3, ArrayView3};
 use rayon::prelude::*;
 
 #[cfg(feature = "simd")]
-use wide::{u8x16, u8x32};
+use wide::u8x16;
 
 use crate::cv_compat::ColorConversionCode;
 
@@ -99,7 +99,7 @@ impl OptimizedBatchProcessor {
 
                 // Load 48 bytes (16 RGB pixels)
                 let chunk1 = u8x16::new([
-                    *src_ptr.add(byte_offset + 0),
+                    *src_ptr.add(byte_offset),
                     *src_ptr.add(byte_offset + 1),
                     *src_ptr.add(byte_offset + 2),
                     *src_ptr.add(byte_offset + 3),
@@ -180,12 +180,12 @@ impl OptimizedBatchProcessor {
             // Handle remaining pixels
             for pixel in simd_pixels..total_pixels {
                 let byte_offset = pixel * 3;
-                let r = *src_ptr.add(byte_offset + 0);
+                let r = *src_ptr.add(byte_offset);
                 let g = *src_ptr.add(byte_offset + 1);
                 let b = *src_ptr.add(byte_offset + 2);
 
                 // Swap R and B
-                *dst_ptr.add(byte_offset + 0) = b;
+                *dst_ptr.add(byte_offset) = b;
                 *dst_ptr.add(byte_offset + 1) = g;
                 *dst_ptr.add(byte_offset + 2) = r;
             }
@@ -235,9 +235,9 @@ impl OptimizedBatchProcessor {
         for group in 0..(16 / 3) {
             let base = group * 3;
             if base + 2 < 16 {
-                swapped[base + 0] = chunk_array[base + 2]; // R -> B
+                swapped[base] = chunk_array[base + 2]; // R -> B
                 swapped[base + 1] = chunk_array[base + 1]; // G -> G
-                swapped[base + 2] = chunk_array[base + 0]; // B -> R
+                swapped[base + 2] = chunk_array[base]; // B -> R
             } else {
                 // Handle remaining bytes
                 for i in base..16 {
@@ -295,7 +295,7 @@ impl OptimizedBatchProcessor {
                     let pixel_idx = pixel_chunk + i;
                     let rgb_offset = pixel_idx * 3;
 
-                    let r = *src_ptr.add(rgb_offset + 0) as u16;
+                    let r = *src_ptr.add(rgb_offset) as u16;
                     let g = *src_ptr.add(rgb_offset + 1) as u16;
                     let b = *src_ptr.add(rgb_offset + 2) as u16;
 
@@ -307,7 +307,7 @@ impl OptimizedBatchProcessor {
             // Handle remaining pixels
             for pixel in simd_pixels..total_pixels {
                 let rgb_offset = pixel * 3;
-                let r = *src_ptr.add(rgb_offset + 0) as u16;
+                let r = *src_ptr.add(rgb_offset) as u16;
                 let g = *src_ptr.add(rgb_offset + 1) as u16;
                 let b = *src_ptr.add(rgb_offset + 2) as u16;
 
