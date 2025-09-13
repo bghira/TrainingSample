@@ -240,9 +240,7 @@ impl OptimizedBatchProcessor {
                 swapped[base + 2] = chunk_array[base]; // B -> R
             } else {
                 // Handle remaining bytes
-                for i in base..16 {
-                    swapped[i] = chunk_array[i];
-                }
+                swapped[base..16].copy_from_slice(&chunk_array[base..16]);
             }
         }
 

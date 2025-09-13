@@ -107,7 +107,7 @@ unsafe fn calculate_luminance_raw_buffer_simd(
     rgb_ptr: *const u8,
     width: usize,
     height: usize,
-    channels: usize,
+    _channels: usize,
 ) -> f64 {
     let pixel_count = width * height;
 
@@ -120,11 +120,14 @@ unsafe fn calculate_luminance_raw_buffer_simd(
 
     #[cfg(target_arch = "aarch64")]
     {
-        return calculate_luminance_raw_neon(rgb_ptr, pixel_count);
+        calculate_luminance_raw_neon(rgb_ptr, pixel_count)
     }
 
-    // Fallback to scalar
-    calculate_luminance_raw_buffer_scalar(rgb_ptr, width, height, channels)
+    #[cfg(not(target_arch = "aarch64"))]
+    {
+        // Fallback to scalar on non-ARM architectures
+        return calculate_luminance_raw_buffer_scalar(rgb_ptr, width, height, _channels);
+    }
 }
 
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
@@ -151,7 +154,7 @@ unsafe fn calculate_luminance_raw_avx2(rgb_ptr: *const u8, pixel_count: usize) -
 
         // Convert to f32 and extract R, G, B channels
         let rgb_lo = _mm256_unpacklo_epi8(rgb_bytes, _mm256_setzero_si256());
-        let rgb_hi = _mm256_unpackhi_epi8(rgb_bytes, _mm256_setzero_si256());
+        let _rgb_hi = _mm256_unpackhi_epi8(rgb_bytes, _mm256_setzero_si256());
 
         let rgb_lo_f32 = _mm256_cvtepi32_ps(_mm256_unpacklo_epi16(rgb_lo, _mm256_setzero_si256()));
         let rgb_hi_f32 = _mm256_cvtepi32_ps(_mm256_unpackhi_epi16(rgb_lo, _mm256_setzero_si256()));

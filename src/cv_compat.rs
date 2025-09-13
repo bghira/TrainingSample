@@ -9,6 +9,7 @@ pub mod imdecode {
 
     /// Image read flags matching OpenCV constants
     #[derive(Debug, Clone, Copy)]
+    #[allow(clippy::enum_variant_names)]
     pub enum ImreadFlags {
         /// Load image as is (unchanged)
         ImreadUnchanged = -1,
@@ -309,6 +310,7 @@ pub mod videocapture {
 
     /// Video capture properties
     #[derive(Debug, Clone, Copy)]
+    #[allow(clippy::enum_variant_names)]
     pub enum VideoCaptureProperties {
         CapPropFps = 5,
         CapPropFrameWidth = 3,
@@ -324,7 +326,9 @@ pub mod videowriter {
     /// Video writer for creating video files
     pub struct VideoWriter {
         filename: String,
+        #[allow(dead_code)]
         fourcc: String,
+        #[allow(dead_code)]
         fps: f64,
         frame_size: (i32, i32),
         frames: Vec<Array3<u8>>,
@@ -544,6 +548,7 @@ pub mod objdetect {
 
     /// Cascade classifier for face detection (equivalent to cv2.CascadeClassifier)
     pub struct CascadeClassifier {
+        #[allow(dead_code)]
         cascade_path: String,
         is_loaded: bool,
     }

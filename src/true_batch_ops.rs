@@ -137,7 +137,7 @@ impl TrueBatchProcessor {
 
             // Create ndarray view from raw slice - no copying!
             let array_view = ndarray::ArrayView1::from(slice);
-            let shaped = array_view.into_shape((height, width, channels))?;
+            let shaped = array_view.into_shape_with_order((height, width, channels))?;
 
             // Clone only the view structure, not the data
             Ok(shaped.to_owned())

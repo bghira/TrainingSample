@@ -25,8 +25,11 @@ use crate::opencv_ops::OpenCVBatchProcessor;
 use crate::true_batch_ops::{ColorConversion, TrueBatchProcessor};
 
 #[cfg(feature = "python-bindings")]
-static BUFFER_POOL: std::sync::LazyLock<Arc<Mutex<BufferPool>>> =
-    std::sync::LazyLock::new(|| Arc::new(Mutex::new(BufferPool::new())));
+static BUFFER_POOL: std::sync::OnceLock<Arc<Mutex<BufferPool>>> = std::sync::OnceLock::new();
+
+fn get_buffer_pool() -> &'static Arc<Mutex<BufferPool>> {
+    BUFFER_POOL.get_or_init(|| Arc::new(Mutex::new(BufferPool::new())))
+}
 
 #[cfg(feature = "python-bindings")]
 struct BufferPool {
@@ -56,9 +59,10 @@ impl BufferPool {
         vec![0u8; size]
     }
 
+    #[allow(dead_code)]
     fn return_buffer(&mut self, buffer: Vec<u8>, height: usize, width: usize, channels: usize) {
         let key = (height, width, channels);
-        let pool = self.pools.entry(key).or_insert_with(VecDeque::new);
+        let pool = self.pools.entry(key).or_default();
 
         if pool.len() < 8 {
             pool.push_back(buffer);
@@ -108,7 +112,7 @@ pub unsafe fn batch_crop_images_zero_copy<'py>(
     }
 
     let mut py_results = Vec::with_capacity(batch_size);
-    let mut pool = BUFFER_POOL.lock().unwrap();
+    let mut pool = get_buffer_pool().lock().unwrap();
 
     for (image, &(x, y, width, height)) in images.iter().zip(crop_boxes.iter()) {
         let img_view = image.as_array();
@@ -156,7 +160,7 @@ pub unsafe fn batch_center_crop_images_zero_copy<'py>(
     }
 
     let mut py_results = Vec::with_capacity(batch_size);
-    let mut pool = BUFFER_POOL.lock().unwrap();
+    let mut pool = get_buffer_pool().lock().unwrap();
 
     for (image, &(target_width, target_height)) in images.iter().zip(target_sizes.iter()) {
         let img_view = image.as_array();
@@ -326,7 +330,7 @@ pub fn batch_resize_images_zero_copy<'py>(
         // Pre-allocate all buffers on main thread to avoid lock contention
         let mut buffers = Vec::with_capacity(batch_size);
         {
-            let mut pool = BUFFER_POOL.lock().unwrap();
+            let mut pool = get_buffer_pool().lock().unwrap();
             for data in &resize_data {
                 let buffer =
                     pool.get_buffer(data.target_height, data.target_width, data.src_channels);
@@ -348,7 +352,7 @@ pub fn batch_resize_images_zero_copy<'py>(
             .collect::<Result<Vec<_>, _>>()
     } else {
         // Sequential processing for small batches - avoid parallel overhead
-        let mut pool = BUFFER_POOL.lock().unwrap();
+        let mut pool = get_buffer_pool().lock().unwrap();
         let mut results = Vec::with_capacity(batch_size);
 
         for data in &resize_data {
@@ -402,7 +406,6 @@ unsafe fn resize_raw_buffer(
     use opencv::{
         core::Mat,
         imgproc::{resize, INTER_LINEAR},
-        prelude::*,
     };
 
     let (src_height, src_width, channels) = src_shape;
@@ -475,7 +478,6 @@ fn resize_single_image_direct<'py>(
     use opencv::{
         core::Mat,
         imgproc::{resize, INTER_LINEAR},
-        prelude::*,
     };
 
     let img_view = image.as_array();
@@ -552,7 +554,7 @@ fn resize_single_image_direct<'py>(
 
 /// Helper function to detect if input is a numpy array (single image)
 fn is_numpy_array(obj: &Bound<PyAny>) -> bool {
-    use pyo3::types::PyList;
+    use pyo3::types::{PyList, PyTuple};
     // If it's a list, it's batch mode. If it's not a list, assume it's a numpy array
     !obj.is_instance_of::<PyList>()
 }
@@ -627,7 +629,6 @@ pub fn batch_resize_images_iterator<'py>(
     use opencv::{
         core::Mat,
         imgproc::{resize, INTER_LINEAR},
-        prelude::*,
     };
     use rayon::prelude::*;
 
@@ -639,13 +640,13 @@ pub fn batch_resize_images_iterator<'py>(
     }
 
     if batch_size == 0 {
-        return Ok(Bound::new(
+        return Bound::new(
             py,
             ResizeIterator {
                 buffers: Vec::new(),
                 index: 0,
             },
-        )?);
+        );
     }
 
     // Extract raw data for parallel processing (same as before)
@@ -684,11 +685,12 @@ pub fn batch_resize_images_iterator<'py>(
     let use_parallel = batch_size >= 8;
 
     // TRUE ZERO-COPY: Process directly to raw buffers, no intermediate Array3!
+    #[allow(clippy::type_complexity)]
     let raw_results: Result<Vec<(Vec<u8>, (usize, usize, usize))>, String> = if use_parallel {
         // Pre-allocate all buffers on main thread (avoid lock contention)
         let mut buffers = Vec::with_capacity(batch_size);
         {
-            let mut pool = BUFFER_POOL.lock().unwrap();
+            let mut pool = get_buffer_pool().lock().unwrap();
             for data in &resize_data {
                 let buffer =
                     pool.get_buffer(data.target_height, data.target_width, data.src_channels);
@@ -749,7 +751,7 @@ pub fn batch_resize_images_iterator<'py>(
             .collect::<Result<Vec<_>, _>>()
     } else {
         // Sequential processing for small batches
-        let mut pool = BUFFER_POOL.lock().unwrap();
+        let mut pool = get_buffer_pool().lock().unwrap();
         let mut results = Vec::with_capacity(batch_size);
 
         for data in &resize_data {
@@ -819,7 +821,7 @@ pub fn batch_resize_images_iterator<'py>(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
 
     // Return iterator with raw buffers - conversion happens on-demand!
-    Ok(Bound::new(py, ResizeIterator { buffers, index: 0 })?)
+    Bound::new(py, ResizeIterator { buffers, index: 0 })
 }
 
 // TSR CROPPING OPERATIONS (BENCHMARK WINNERS)
@@ -1483,7 +1485,7 @@ impl PyBatchProcessor {
         images: Vec<PyReadonlyArray3<u8>>,
         code: i32,
     ) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
-        use crate::cv_compat::{cvt_color, ColorConversionCode};
+        use crate::cv_compat::ColorConversionCode;
 
         let color_code = match code {
             4 => ColorConversionCode::ColorBgr2Rgb,
@@ -1525,7 +1527,7 @@ impl PyBatchProcessor {
         target_sizes: Vec<(u32, u32)>,
         interpolation: Option<i32>,
     ) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
-        use crate::cv_compat::{resize, ResizeInterpolation};
+        use crate::cv_compat::ResizeInterpolation;
 
         let interp = match interpolation.unwrap_or(1) {
             0 => ResizeInterpolation::InterNearest,
@@ -1738,6 +1740,7 @@ impl PyTrueBatchProcessor {
     }
 
     /// TRUE batch resize with proper OpenCV interpolation - should beat cv2 individual calls
+    #[pyo3(signature = (images, target_sizes, interpolation=None))]
     fn true_batch_resize<'py>(
         &self,
         py: Python<'py>,
@@ -1816,6 +1819,7 @@ impl PyTrueBatchProcessor {
     }
 
     /// Strided luminance calculation for fast "dummy light" average
+    #[pyo3(signature = (images, stride=None))]
     fn strided_luminance(
         &self,
         images: Vec<PyReadonlyArray3<u8>>,
