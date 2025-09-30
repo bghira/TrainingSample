@@ -1,27 +1,24 @@
 # Cargo configuration for static OpenCV linking
 # This allows building self-contained wheels without requiring system OpenCV
 
-# Linux x86_64 configuration
-[target.x86_64-unknown-linux-gnu.env]
+# Global environment variables (paths are the same across all platforms)
+[env]
 # Paths are resolved relative to the workspace root
 OPENCV_INCLUDE_PATHS = { value = "third_party/opencv-static/include/opencv4", relative = true }
 OPENCV_LINK_PATHS = { value = "third_party/opencv-static/lib", relative = true }
 # Tell the build script to stop probing the system (include vcpkg_cmake)
 OPENCV_DISABLE_PROBES = "pkg_config,cmake,vcpkg,vcpkg_cmake"
+
+# Linux x86_64 configuration
+[target.x86_64-unknown-linux-gnu.env]
 # Static link OpenCV and all its dependencies
 OPENCV_LINK_LIBS = "static=opencv_world,static=png,static=jpeg,static=tiff,static=webp,static=z,static=stdc++"
 
 # macOS ARM64 configuration (Apple Silicon)
 [target.aarch64-apple-darwin.env]
-OPENCV_INCLUDE_PATHS = { value = "third_party/opencv-static/include/opencv4", relative = true }
-OPENCV_LINK_PATHS = { value = "third_party/opencv-static/lib", relative = true }
-OPENCV_DISABLE_PROBES = "pkg_config,cmake,vcpkg,vcpkg_cmake"
 # Static link OpenCV but use dynamic C++ stdlib (macOS doesn't provide static libc++)
 OPENCV_LINK_LIBS = "static=opencv_world,static=png,static=jpeg,static=tiff,static=webp,static=z,dylib=c++"
 
 # macOS x86_64 configuration (Intel)
 [target.x86_64-apple-darwin.env]
-OPENCV_INCLUDE_PATHS = { value = "third_party/opencv-static/include/opencv4", relative = true }
-OPENCV_LINK_PATHS = { value = "third_party/opencv-static/lib", relative = true }
-OPENCV_DISABLE_PROBES = "pkg_config,cmake,vcpkg,vcpkg_cmake"
 OPENCV_LINK_LIBS = "static=opencv_world,static=png,static=jpeg,static=tiff,static=webp,static=z,dylib=c++"
