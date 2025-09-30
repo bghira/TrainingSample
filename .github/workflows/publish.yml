@@ -43,21 +43,24 @@ jobs:
       run: |
         ./scripts/build-opencv-static.sh
 
+    - name: Set OpenCV environment variables
+      run: |
+        # Export OpenCV vars so they're available to all subsequent steps
+        echo "OPENCV_INCLUDE_PATHS=${{ github.workspace }}/third_party/opencv-static/include/opencv4" >> $GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=${{ github.workspace }}/third_party/opencv-static/lib" >> $GITHUB_ENV
+        echo "OPENCV_LINK_LIBS=static=opencv_world,static=stdc++" >> $GITHUB_ENV
+        echo "OPENCV_DISABLE_PROBES=pkg_config,cmake,vcpkg,vcpkg_cmake" >> $GITHUB_ENV
+
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --find-interpreter --zig --no-default-features --features python-bindings,simd,opencv
-        sccache: 'true'
+        sccache: 'false'
         manylinux: auto
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-        # OpenCV static linking configuration
-        OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
-        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,static=png,static=jpeg,static=tiff,static=webp,static=z,static=stdc++
-        OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -98,20 +101,23 @@ jobs:
       run: |
         ./scripts/build-opencv-static.sh
 
+    - name: Set OpenCV environment variables
+      run: |
+        # Export OpenCV vars so they're available to all subsequent steps
+        echo "OPENCV_INCLUDE_PATHS=${{ github.workspace }}/third_party/opencv-static/include/opencv4" >> $GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=${{ github.workspace }}/third_party/opencv-static/lib" >> $GITHUB_ENV
+        echo "OPENCV_LINK_LIBS=static=opencv_world,framework=Accelerate,dylib=c++" >> $GITHUB_ENV
+        echo "OPENCV_DISABLE_PROBES=pkg_config,cmake,vcpkg,vcpkg_cmake" >> $GITHUB_ENV
+
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv,metal
-        sccache: 'true'
+        sccache: 'false'
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-        # OpenCV static linking configuration
-        OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
-        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,static=png,static=jpeg,static=tiff,static=webp,static=z,dylib=c++
-        OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
