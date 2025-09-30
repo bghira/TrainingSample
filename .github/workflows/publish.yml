@@ -53,12 +53,13 @@ jobs:
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-        # OpenCV headers - opencv-rust needs this to generate bindings
+        # OpenCV environment probe needs these vars set
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+        OPENCV_LINK_LIBS: static=opencv_world,static=stdc++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
-        # Don't set OPENCV_LINK_LIBS or OPENCV_LINK_PATHS - let RUSTFLAGS handle linking
-        # Force static linking by passing .a file directly to zig linker
-        RUSTFLAGS: -C link-arg=${{ github.workspace }}/third_party/opencv-static/lib/libopencv_world.a -C link-arg=-lstdc++
+        # Also pass .a file directly via RUSTFLAGS to force zig to use static lib
+        RUSTFLAGS: -C link-arg=${{ github.workspace }}/third_party/opencv-static/lib/libopencv_world.a
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -108,12 +109,13 @@ jobs:
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-        # OpenCV headers - opencv-rust needs this to generate bindings
+        # OpenCV environment probe needs these vars set
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+        OPENCV_LINK_LIBS: static=opencv_world,framework=Accelerate,dylib=c++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
-        # Don't set OPENCV_LINK_LIBS or OPENCV_LINK_PATHS - let RUSTFLAGS handle linking
-        # Force static linking by passing .a file directly + required frameworks
-        RUSTFLAGS: -C link-arg=${{ github.workspace }}/third_party/opencv-static/lib/libopencv_world.a -C link-arg=-framework -C link-arg=Accelerate -C link-arg=-lc++
+        # Also pass .a file directly via RUSTFLAGS to force static lib usage
+        RUSTFLAGS: -C link-arg=${{ github.workspace }}/third_party/opencv-static/lib/libopencv_world.a
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
