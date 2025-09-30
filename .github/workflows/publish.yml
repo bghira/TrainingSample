@@ -47,6 +47,10 @@ jobs:
         sccache: 'false'
         manylinux: auto
         before-script-linux: |
+          # Install LLVM/clang for opencv-rust bindings generation
+          yum install -y clang llvm-devel
+          export LIBCLANG_PATH=/usr/lib64
+
           # Build OpenCV inside manylinux container if not cached
           if [ ! -f "third_party/opencv-static/lib/libopencv_world.a" ]; then
             yum install -y cmake3 wget
