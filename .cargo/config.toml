@@ -1,25 +1,7 @@
 # Cargo configuration for OpenCV linking
 #
-# To test static linking locally (like CI does):
-# 1. Run ./scripts/build-opencv-static.sh
-# 2. Use this config (static paths)
-#
-# To use system OpenCV (faster dev iteration):
-# Comment out the static config and use dynamic linking
+# Default: Uses system OpenCV (for CI and local development)
+# Release builds: Override with static linking via workflow env vars
 
-# Static OpenCV configuration (for testing CI behavior locally)
-[env]
-OPENCV_DISABLE_PROBES = "pkg_config,cmake,vcpkg,vcpkg_cmake"
-OPENCV_INCLUDE_PATHS = {value = "third_party/opencv-static/include/opencv4", relative = true}
-OPENCV_LINK_PATHS = {value = "third_party/opencv-static/lib", relative = true}
-
-[target.aarch64-apple-darwin.env]
-# opencv_world embeds all dependencies, just need Accelerate framework and C++ stdlib
-OPENCV_LINK_LIBS = "static=opencv_world,framework=Accelerate,dylib=c++"
-
-[target.x86_64-apple-darwin.env]
-OPENCV_LINK_LIBS = "static=opencv_world,framework=Accelerate,dylib=c++"
-
-[target.x86_64-unknown-linux-gnu.env]
-# Linux needs stdc++ instead of c++
-OPENCV_LINK_LIBS = "static=opencv_world,static=stdc++"
+# This file is intentionally minimal - it lets opencv-rust probe the system.
+# The release workflow sets OPENCV_* env vars to force static linking.
