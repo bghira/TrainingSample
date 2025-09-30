@@ -17,11 +17,18 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install OpenCV and LLVM dependencies
+    - name: Cache static OpenCV
+      id: cache-opencv
+      uses: actions/cache@v4
+      with:
+        path: third_party/opencv-static
+        key: opencv-static-4.10.0-linux-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install build dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
-        # Install LLVM 18 which has the proper libclang.so symlink
+        # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
+        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl
         sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
         # Set environment variables for LLVM 18
         echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
@@ -30,6 +37,11 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
+
+    - name: Build static OpenCV
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      run: |
+        ./scripts/build-opencv-static.sh
 
     - name: Build wheels
       uses: PyO3/maturin-action@v1
@@ -60,18 +72,26 @@ jobs:
       with:
         python-version: '3.11'
 
-    - name: Install OpenCV (macOS)
+    - name: Cache static OpenCV
+      id: cache-opencv
+      uses: actions/cache@v4
+      with:
+        path: third_party/opencv-static
+        key: opencv-static-4.10.0-macos-${{ runner.os }}-${{ runner.arch }}
+
+    - name: Install build dependencies
       run: |
-        # Install OpenCV and LLVM via Homebrew
-        brew install opencv llvm
+        # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
+        brew install llvm cmake
         # Set up LLVM environment for opencv-rust bindings (keg-only installation)
         echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
         echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Set up OpenCV environment
-        echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
-        echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
-        echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
+
+    - name: Build static OpenCV
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      run: |
+        ./scripts/build-opencv-static.sh
 
     - name: Build wheels
       uses: PyO3/maturin-action@v1
