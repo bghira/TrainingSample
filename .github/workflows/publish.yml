@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 jobs:
   linux:
@@ -22,7 +23,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-v2-linux-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-manylinux-linux-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
@@ -38,19 +39,20 @@ jobs:
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
 
-    - name: Build static OpenCV
-      if: steps.cache-opencv.outputs.cache-hit != 'true'
-      run: |
-        ./scripts/build-opencv-static.sh
-
     - name: Build wheels
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
         args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv
         sccache: 'false'
-        manylinux: 2014
-        container: off
+        manylinux: auto
+        before-script-linux: |
+          # Build OpenCV inside manylinux container if not cached
+          if [ ! -f "third_party/opencv-static/lib/libopencv_world.a" ]; then
+            yum install -y cmake3 wget
+            ln -s /usr/bin/cmake3 /usr/bin/cmake
+            ./scripts/build-opencv-static.sh
+          fi
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
