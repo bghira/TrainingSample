@@ -62,9 +62,18 @@ cmake --build build --config Release --target opencv_world -j$(nproc 2>/dev/null
 echo "Installing to ${INSTALL_DIR}..."
 cmake --install build --config Release
 
-# Verify installation
+# Verify installation - check both lib and lib64 (manylinux uses lib64)
+if [ -f "${INSTALL_DIR}/lib64/libopencv_world.a" ]; then
+    # Move from lib64 to lib for consistency
+    mkdir -p "${INSTALL_DIR}/lib"
+    mv "${INSTALL_DIR}/lib64"/* "${INSTALL_DIR}/lib/"
+    rmdir "${INSTALL_DIR}/lib64"
+fi
+
 if [ ! -f "${INSTALL_DIR}/lib/libopencv_world.a" ]; then
     echo "ERROR: libopencv_world.a not found after installation"
+    echo "Contents of ${INSTALL_DIR}:"
+    ls -R "${INSTALL_DIR}"
     exit 1
 fi
 
