@@ -22,7 +22,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-linux-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-v2-linux-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
@@ -47,19 +47,18 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --zig --no-default-features --features python-bindings,simd,opencv
+        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv
         sccache: 'false'
-        manylinux: auto
+        manylinux: 2014
+        container: off
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-        # OpenCV environment probe needs these vars set
+        # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
         OPENCV_LINK_LIBS: static=opencv_world,static=stdc++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
-        # Also pass .a file directly via RUSTFLAGS to force zig to use static lib
-        RUSTFLAGS: -C link-arg=${{ github.workspace }}/third_party/opencv-static/lib/libopencv_world.a
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -84,7 +83,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-macos-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-v2-macos-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
@@ -109,13 +108,11 @@ jobs:
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
-        # OpenCV environment probe needs these vars set
+        # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
         OPENCV_LINK_LIBS: static=opencv_world,framework=Accelerate,dylib=c++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
-        # Also pass .a file directly via RUSTFLAGS to force static lib usage
-        RUSTFLAGS: -C link-arg=${{ github.workspace }}/third_party/opencv-static/lib/libopencv_world.a
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
