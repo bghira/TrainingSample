@@ -4,7 +4,7 @@ set -euo pipefail
 # Build static OpenCV bundle for embedding in Python wheels
 # This eliminates the need for users to install OpenCV system packages
 
-OPENCV_VERSION="4.10.0"
+OPENCV_VERSION="4.12.0"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
