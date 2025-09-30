@@ -180,7 +180,13 @@ impl OpenCVBatchProcessor {
         )?;
 
         #[cfg(not(target_os = "macos"))]
-        cvt_color(&src_mat, &mut gray_mat, COLOR_RGB2GRAY, 0)?;
+        cvt_color(
+            &src_mat,
+            &mut gray_mat,
+            COLOR_RGB2GRAY,
+            0,
+            opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
+        )?;
 
         // Calculate mean (luminance)
         let mean_scalar = opencv::core::mean(&gray_mat, &opencv::core::no_array())?;

@@ -282,7 +282,13 @@ impl TrueBatchProcessor {
                 opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
             )?;
             #[cfg(not(target_os = "macos"))]
-            cvt_color(&src_mats[i], &mut dst_mat, opencv_code, 0)?;
+            cvt_color(
+                &src_mats[i],
+                &mut dst_mat,
+                opencv_code,
+                0,
+                opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
+            )?;
 
             results.push(result);
         }
