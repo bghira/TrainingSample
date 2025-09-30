@@ -1,0 +1,19 @@
+# Cargo configuration for OpenCV linking
+#
+# Local development: Uses system OpenCV (via Homebrew on macOS)
+# CI/Release builds: Override with static linking via environment variables
+
+# macOS development configuration (uses Homebrew OpenCV)
+[target.aarch64-apple-darwin.env]
+OPENCV_LINK_LIBS = "opencv_calib3d,opencv_core,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_photo,opencv_video,opencv_videoio"
+OPENCV_LINK_PATHS = "/opt/homebrew/lib"
+OPENCV_INCLUDE_PATHS = "/opt/homebrew/include/opencv4"
+
+[target.x86_64-apple-darwin.env]
+OPENCV_LINK_LIBS = "opencv_calib3d,opencv_core,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_photo,opencv_video,opencv_videoio"
+OPENCV_LINK_PATHS = "/opt/homebrew/lib"
+OPENCV_INCLUDE_PATHS = "/opt/homebrew/include/opencv4"
+
+# Linux configuration (will use static linking in CI via env overrides)
+[target.x86_64-unknown-linux-gnu.env]
+# CI will override these with static paths and OPENCV_DISABLE_PROBES

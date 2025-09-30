@@ -49,6 +49,10 @@ Thumbs.db
 target/
 Cargo.lock
 
+# Static OpenCV bundle (built in CI, not committed)
+third_party/
+opencv-build-tmp/
+
 files.tbz
 */config/auth.json
 work
