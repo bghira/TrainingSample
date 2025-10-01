@@ -36,11 +36,10 @@ jobs:
         key: opencv-static-4.12.0-no-itt-linux-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.manylinux }}
 
     - name: Install build dependencies
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_MODE: a
       run: |
-        # Disable interactive prompts
-        export DEBIAN_FRONTEND=noninteractive
-        export NEEDRESTART_MODE=a
-        
         sudo apt-get update
         # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
         sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common
