@@ -23,7 +23,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-manylinux-linux-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-no-itt-linux-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
@@ -86,7 +86,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-v2-macos-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-no-itt-macos-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
