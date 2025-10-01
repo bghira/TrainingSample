@@ -169,23 +169,11 @@ impl OpenCVBatchProcessor {
 
         // Convert to grayscale using OpenCV's optimized implementation
         let mut gray_mat = Mat::default();
-        // Different OpenCV versions have different cvt_color signatures
-        #[cfg(target_os = "macos")]
         cvt_color(
             &src_mat,
             &mut gray_mat,
             COLOR_RGB2GRAY,
             0,
-            opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
-        )?;
-
-        #[cfg(not(target_os = "macos"))]
-        cvt_color(
-            &src_mat,
-            &mut gray_mat,
-            COLOR_RGB2GRAY,
-            0,
-            opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
         )?;
 
         // Calculate mean (luminance)
