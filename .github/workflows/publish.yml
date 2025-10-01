@@ -17,7 +17,7 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_35
             python-versions: '["3.11", "3.12"]'
-          # Ubuntu 24.04 (libc 2.38) 
+          # Ubuntu 24.04 (libc 2.38)
           - os: ubuntu-24.04
             target: x86_64
             manylinux: manylinux_2_38
@@ -40,11 +40,11 @@ jobs:
         # Completely remove needrestart to eliminate hanging prompts
         sudo apt-get remove -y needrestart || true
         export DEBIAN_FRONTEND=noninteractive
-        
+
         sudo apt-get update
         # Install basic LLVM for opencv-rust bindings codegen
         sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common
-        
+
         # For Ubuntu 22.04, use the default LLVM 14 instead of PPA to avoid restart issues
         if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
           echo "Using default LLVM 14 for Ubuntu 22.04"
@@ -55,20 +55,20 @@ jobs:
           sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
           echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         fi
-        
+
         # Find the correct libclang.so path and set environment variables (search only LLVM directories)
         if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
           LIBCLANG_PATH="/usr/lib/llvm-14/lib"
         else
           LIBCLANG_PATH="/usr/lib/llvm-18/lib"
         fi
-        
+
         # Verify the file exists at the expected location
         if [ ! -f "$LIBCLANG_PATH/libclang.so" ]; then
           # Fallback to targeted search if expected location doesn't exist
           LIBCLANG_PATH=$(find /usr/lib/llvm* -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
         fi
-        
+
         echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$LIBCLANG_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         # Verify the key files exist
