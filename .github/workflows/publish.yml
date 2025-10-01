@@ -37,33 +37,33 @@ jobs:
 
     - name: Install build dependencies
       run: |
-        # Set environment variables for all commands including sudo
-        echo "DEBIAN_FRONTEND=noninteractive" | sudo tee -a /etc/environment
-        echo "NEEDRESTART_MODE=a" | sudo tee -a /etc/environment
+        # Disable all interactive prompts system-wide
+        sudo sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf
+        export DEBIAN_FRONTEND=noninteractive
         
         sudo apt-get update
-        # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
+        # Install basic LLVM for opencv-rust bindings codegen
         sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common
         
-        # Add LLVM PPA for Ubuntu 22.04 to get LLVM 18
+        # For Ubuntu 22.04, use the default LLVM 14 instead of PPA to avoid restart issues
         if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
-          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
-          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
-          sudo apt-get update
+          echo "Using default LLVM 14 for Ubuntu 22.04 to avoid restart issues"
+          sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang-14-dev
+          echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
+        else
+          # Ubuntu 24.04 has LLVM 18 by default
+          sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+          echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         fi
-        
-        # Install LLVM 18 (available by default in Ubuntu 24.04)
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
         
         # Find the correct libclang.so path and set environment variables
         LIBCLANG_PATH=$(find /usr -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
         echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$LIBCLANG_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         # Verify the key files exist
         echo "Found libclang.so at:"
         find /usr -name "libclang.so" 2>/dev/null
-        which llvm-config-18
+        echo "LLVM config at: $(which llvm-config-14 2>/dev/null || which llvm-config-18 2>/dev/null)"
 
     - name: Build static OpenCV
       if: steps.cache-opencv.outputs.cache-hit != 'true'
