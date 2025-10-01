@@ -56,13 +56,23 @@ jobs:
           echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         fi
         
-        # Find the correct libclang.so path and set environment variables
-        LIBCLANG_PATH=$(find /usr -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
+        # Find the correct libclang.so path and set environment variables (search only LLVM directories)
+        if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+          LIBCLANG_PATH="/usr/lib/llvm-14/lib"
+        else
+          LIBCLANG_PATH="/usr/lib/llvm-18/lib"
+        fi
+        
+        # Verify the file exists at the expected location
+        if [ ! -f "$LIBCLANG_PATH/libclang.so" ]; then
+          # Fallback to targeted search if expected location doesn't exist
+          LIBCLANG_PATH=$(find /usr/lib/llvm* -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
+        fi
+        
         echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=$LIBCLANG_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         # Verify the key files exist
-        echo "Found libclang.so at:"
-        find /usr -name "libclang.so" 2>/dev/null
+        echo "Using libclang.so at: $LIBCLANG_PATH/libclang.so"
         echo "LLVM config at: $(which llvm-config-14 2>/dev/null || which llvm-config-18 2>/dev/null)"
 
     - name: Build static OpenCV
