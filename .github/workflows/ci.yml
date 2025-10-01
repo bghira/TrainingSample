@@ -13,9 +13,6 @@ jobs:
   rust-tests:
     name: Rust Tests
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        rust: [stable, beta]
 
     steps:
     - uses: actions/checkout@v4
@@ -37,7 +34,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: ${{ matrix.rust }}
+        toolchain: 1.86
         components: rustfmt, clippy
 
     - name: Cache cargo registry
@@ -100,7 +97,9 @@ jobs:
         python-version: ${{ matrix.python-version }}
 
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.86
 
     - name: Install maturin (Linux/macOS)
       run: pip install maturin[patchelf]
@@ -199,7 +198,9 @@ jobs:
         python-version: 3.11
 
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@master
+      with:
+        toolchain: 1.86
 
     - name: Install maturin (Linux/macOS)
       run: pip install maturin[patchelf]
