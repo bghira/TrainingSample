@@ -51,12 +51,14 @@ jobs:
         # Install LLVM 18 (available by default in Ubuntu 24.04)
         sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
         
-        # Set environment variables for LLVM 18
-        echo "LIBCLANG_PATH=/usr/lib/x86_64-linux-gnu" >> $GITHUB_ENV
+        # Find the correct libclang.so path and set environment variables
+        LIBCLANG_PATH=$(find /usr -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
+        echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$LIBCLANG_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
         # Verify the key files exist
-        ls -la /usr/lib/x86_64-linux-gnu/libclang.so
+        echo "Found libclang.so at:"
+        find /usr -name "libclang.so" 2>/dev/null
         which llvm-config-18
 
     - name: Build static OpenCV
