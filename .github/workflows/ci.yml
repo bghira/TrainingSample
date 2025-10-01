@@ -187,8 +187,9 @@ jobs:
         python-version: 3.11
 
     - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@stable
+      uses: dtolnay/rust-toolchain@master
       with:
+        toolchain: 1.85
         components: rustfmt, clippy
 
     - name: Install cargo-audit
