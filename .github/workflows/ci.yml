@@ -20,7 +20,7 @@ jobs:
     - name: Install OpenCV and LLVM dependencies
       run: |
         sudo apt-get update
-        sudo apt-get install -y pkg-config libopencv-dev clang libclang-dev llvm-dev
+        sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
         # Install LLVM 18 which has the proper libclang.so symlink
         sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
         # Set environment variables for LLVM 18
@@ -30,6 +30,41 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
+        
+        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
+        echo "Building OpenCV 4.12 from source..."
+        cd /tmp
+        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
+        tar -xzf 4.12.0.tar.gz
+        cd opencv-4.12.0
+        mkdir build
+        cd build
+        cmake \
+          -DCMAKE_BUILD_TYPE=RELEASE \
+          -DCMAKE_INSTALL_PREFIX=/usr/local \
+          -DWITH_CUDA=OFF \
+          -DWITH_OPENGL=OFF \
+          -DWITH_OPENCL=OFF \
+          -DWITH_TBB=OFF \
+          -DWITH_IPP=OFF \
+          -DWITH_1394=OFF \
+          -DWITH_V4L=OFF \
+          -DWITH_GTK=OFF \
+          -DBUILD_TESTS=OFF \
+          -DBUILD_PERF_TESTS=OFF \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_opencv_python2=OFF \
+          -DBUILD_opencv_python3=OFF \
+          -DBUILD_opencv_java=OFF \
+          -DOPENCV_GENERATE_PKGCONFIG=ON \
+          ..
+        make -j$(nproc)
+        sudo make install
+        sudo ldconfig
+        
+        # Set OpenCV environment variables
+        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
