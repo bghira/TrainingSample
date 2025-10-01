@@ -4,7 +4,7 @@ use rayon::prelude::*;
 
 #[cfg(feature = "opencv")]
 use opencv::{
-    core::Mat,
+    core::{AlgorithmHint, Mat},
     imgproc::{resize, INTER_CUBIC, INTER_LANCZOS4, INTER_LINEAR, INTER_NEAREST},
     prelude::*,
 };
@@ -278,6 +278,7 @@ impl TrueBatchProcessor {
                 &mut dst_mat,
                 opencv_code,
                 0,
+                AlgorithmHint::ALGO_HINT_ACCURATE,
             )?;
 
             results.push(result);

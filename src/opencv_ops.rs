@@ -3,7 +3,7 @@ use ndarray::{Array3, ArrayView3};
 
 #[cfg(feature = "opencv")]
 use opencv::{
-    core::Mat,
+    core::{AlgorithmHint, Mat},
     imgproc::{cvt_color, resize, COLOR_RGB2GRAY, INTER_LANCZOS4},
     prelude::*,
 };
@@ -174,6 +174,7 @@ impl OpenCVBatchProcessor {
             &mut gray_mat,
             COLOR_RGB2GRAY,
             0,
+            AlgorithmHint::ALGO_HINT_ACCURATE,
         )?;
 
         // Calculate mean (luminance)

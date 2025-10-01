@@ -30,7 +30,7 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
-        
+
         # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
         echo "Building OpenCV 4.12 from source..."
         cd /tmp
@@ -61,7 +61,7 @@ jobs:
         make -j$(nproc)
         sudo make install
         sudo ldconfig
-        
+
         # Set OpenCV environment variables
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
