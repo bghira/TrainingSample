@@ -39,8 +39,18 @@ jobs:
       run: |
         sudo apt-get update
         # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
-        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl
+        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common
+        
+        # Add LLVM PPA for Ubuntu 22.04 to get LLVM 18
+        if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+          wget -qO- https://apt.llvm.org/llvm-snapshot.gpg.key | sudo apt-key add -
+          sudo add-apt-repository "deb http://apt.llvm.org/jammy/ llvm-toolchain-jammy-18 main"
+          sudo apt-get update
+        fi
+        
+        # Install LLVM 18 (available by default in Ubuntu 24.04)
         sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        
         # Set environment variables for LLVM 18
         echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
