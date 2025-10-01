@@ -4,7 +4,7 @@ use rayon::prelude::*;
 
 #[cfg(feature = "opencv")]
 use opencv::{
-    core::Mat,
+    core::{AlgorithmHint, Mat},
     imgproc::{resize, INTER_CUBIC, INTER_LANCZOS4, INTER_LINEAR, INTER_NEAREST},
     prelude::*,
 };
@@ -273,21 +273,12 @@ impl TrueBatchProcessor {
             };
 
             // OpenCV writes directly into our result array!
-            #[cfg(target_os = "macos")]
             cvt_color(
                 &src_mats[i],
                 &mut dst_mat,
                 opencv_code,
                 0,
-                opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
-            )?;
-            #[cfg(not(target_os = "macos"))]
-            cvt_color(
-                &src_mats[i],
-                &mut dst_mat,
-                opencv_code,
-                0,
-                opencv::core::AlgorithmHint::ALGO_HINT_DEFAULT,
+                AlgorithmHint::ALGO_HINT_ACCURATE,
             )?;
 
             results.push(result);

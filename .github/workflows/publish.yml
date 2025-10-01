@@ -8,10 +8,20 @@ on:
 
 jobs:
   linux:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        target: [x86_64]
+        include:
+          # Ubuntu 22.04 (libc 2.35)
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python-versions: '["3.11", "3.12"]'
+          # Ubuntu 24.04 (libc 2.38)
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_38
+            python-versions: '["3.11", "3.12"]'
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -23,39 +33,67 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-manylinux-linux-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-no-itt-linux-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.manylinux }}
 
     - name: Install build dependencies
       run: |
-        sudo apt-get update
-        # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
-        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
-        # Set environment variables for LLVM 18
-        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify the key files exist
-        ls -la /usr/lib/llvm-18/lib/libclang.so
-        which llvm-config-18
+        # Completely remove needrestart to eliminate hanging prompts
+        sudo apt-get remove -y needrestart || true
+        export DEBIAN_FRONTEND=noninteractive
 
-    - name: Build wheels
+        sudo apt-get update
+        # Install basic LLVM for opencv-rust bindings codegen
+        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common
+
+        # For Ubuntu 22.04, use the default LLVM 14 instead of PPA to avoid restart issues
+        if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+          echo "Using default LLVM 14 for Ubuntu 22.04"
+          sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang-14-dev
+          echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
+        else
+          # Ubuntu 24.04 has LLVM 18 by default
+          sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+          echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+        fi
+
+        # Find the correct libclang.so path and set environment variables (search only LLVM directories)
+        if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
+          LIBCLANG_PATH="/usr/lib/llvm-14/lib"
+        else
+          LIBCLANG_PATH="/usr/lib/llvm-18/lib"
+        fi
+
+        # Verify the file exists at the expected location
+        if [ ! -f "$LIBCLANG_PATH/libclang.so" ]; then
+          # Fallback to targeted search if expected location doesn't exist
+          LIBCLANG_PATH=$(find /usr/lib/llvm* -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
+        fi
+
+        echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$LIBCLANG_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        # Verify the key files exist
+        echo "Using libclang.so at: $LIBCLANG_PATH/libclang.so"
+        echo "LLVM config at: $(which llvm-config-14 2>/dev/null || which llvm-config-18 2>/dev/null)"
+
+    - name: Build static OpenCV
+      if: steps.cache-opencv.outputs.cache-hit != 'true'
+      run: |
+        ./scripts/build-opencv-static.sh
+
+    - name: Build wheels for multiple Python versions
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv
+        args: --release --out dist --no-default-features --features python-bindings,simd,opencv
         sccache: 'false'
-        manylinux: auto
-        before-script-linux: |
-          # Build OpenCV inside manylinux container if not cached
-          if [ ! -f "third_party/opencv-static/lib/libopencv_world.a" ]; then
-            yum install -y cmake3 wget
-            ln -s /usr/bin/cmake3 /usr/bin/cmake
-            ./scripts/build-opencv-static.sh
-          fi
+        container: off
+        manylinux: ${{ matrix.manylinux }}
       env:
         # Use stable ABI for forward compatibility
         PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
+        # LLVM for opencv-rust bindings (from earlier install step)
+        LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
+        LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
@@ -65,7 +103,7 @@ jobs:
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-linux-${{ matrix.target }}
+        name: wheels-linux-${{ matrix.os }}-${{ matrix.target }}
         path: dist
 
 
@@ -85,7 +123,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-v2-macos-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-no-itt-macos-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
@@ -146,6 +184,17 @@ jobs:
         pattern: wheels-*
         merge-multiple: true
         path: dist
+    - name: List built wheels
+      run: |
+        echo "Built wheels:"
+        ls -la dist/
+        echo "Wheel information:"
+        for wheel in dist/*.whl; do
+          if [ -f "$wheel" ]; then
+            echo "Checking $wheel:"
+            python -c "import zipfile; print(zipfile.ZipFile('$wheel').namelist()[:3])" || echo "  Could not read wheel contents"
+          fi
+        done
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@v1.12.4
       with:
