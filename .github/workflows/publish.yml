@@ -37,8 +37,8 @@ jobs:
 
     - name: Install build dependencies
       run: |
-        # Disable all interactive prompts system-wide BEFORE any package operations
-        sudo sed -i 's/#$nrconf{restart} = '"'"'i'"'"';/$nrconf{restart} = '"'"'a'"'"';/g' /etc/needrestart/needrestart.conf || true
+        # Completely remove needrestart to eliminate hanging prompts
+        sudo apt-get remove -y needrestart || true
         export DEBIAN_FRONTEND=noninteractive
         
         sudo apt-get update
@@ -47,12 +47,12 @@ jobs:
         
         # For Ubuntu 22.04, use the default LLVM 14 instead of PPA to avoid restart issues
         if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
-          echo "Using default LLVM 14 for Ubuntu 22.04 to avoid restart issues"
-          sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang-14-dev || echo "LLVM 14 packages already installed"
+          echo "Using default LLVM 14 for Ubuntu 22.04"
+          sudo apt-get install -y llvm-14 llvm-14-dev llvm-14-tools libclang-14-dev
           echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
         else
           # Ubuntu 24.04 has LLVM 18 by default
-          sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18 || echo "LLVM 18 packages already installed"
+          sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
           echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         fi
         
