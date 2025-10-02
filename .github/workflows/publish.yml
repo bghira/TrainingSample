@@ -17,10 +17,10 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_35
             python-versions: '["3.11", "3.12"]'
-          # Ubuntu 24.04 (libc 2.38)
+          # Ubuntu 24.04 (libc 2.39, wheels tagged manylinux_2_35 for compatibility)
           - os: ubuntu-24.04
             target: x86_64
-            manylinux: manylinux_2_38
+            manylinux: manylinux_2_35
             python-versions: '["3.11", "3.12"]'
     steps:
     - uses: actions/checkout@v4
