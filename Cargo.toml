@@ -37,7 +37,7 @@ description = "High-performance Rust reimplementation of GIL-blocking video/imag
 edition = "2021"
 license = "MIT"
 name = "trainingsample"
-version = "0.2.5"
+version = "0.2.6"
 
 [profile.release]
 codegen-units = 1
