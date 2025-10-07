@@ -16,17 +16,25 @@ jobs:
           - os: ubuntu-22.04
             target: x86_64
             manylinux: manylinux_2_35
-            python-versions: '["3.11", "3.12"]'
-          # Ubuntu 24.04 (libc 2.38)
+            python: '3.11'
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.12'
+          # Ubuntu 24.04 (libc 2.39)
           - os: ubuntu-24.04
             target: x86_64
-            manylinux: manylinux_2_38
-            python-versions: '["3.11", "3.12"]'
+            manylinux: manylinux_2_39
+            python: '3.11'
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.12'
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: ${{ matrix.python }}
 
     - name: Cache static OpenCV
       id: cache-opencv
@@ -103,7 +111,7 @@ jobs:
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-linux-${{ matrix.os }}-${{ matrix.target }}
+        name: wheels-linux-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python }}
         path: dist
 
 

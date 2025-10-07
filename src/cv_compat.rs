@@ -227,77 +227,57 @@ pub mod cvtcolor {
 /// OpenCV-compatible video capture functionality
 pub mod videocapture {
     use super::*;
+
+    #[cfg(feature = "opencv")]
+    use opencv::{
+        core::{self, Mat},
+        imgproc,
+        prelude::*,
+        videoio::{self, VideoCaptureTrait, VideoCaptureTraitConst},
+    };
+
+    #[cfg(not(feature = "opencv"))]
     use std::path::Path;
 
-    /// Video capture properties
+    /// Video capture that mirrors OpenCV's API surface
     pub struct VideoCapture {
-        frames: Vec<Array3<u8>>,
-        current_frame: usize,
-        frame_count: usize,
+        #[cfg(feature = "opencv")]
+        inner: Option<opencv::videoio::VideoCapture>,
         fps: f64,
         width: i32,
         height: i32,
+        frame_count: usize,
         is_opened: bool,
     }
 
     impl VideoCapture {
-        /// Create new VideoCapture from file path
-        pub fn new(filename: &str) -> Result<Self> {
-            // For now, we'll implement a basic version that loads video as image sequence
-            // In a full implementation, you'd use a video decoding library like ffmpeg
-            if !Path::new(filename).exists() {
-                return Ok(Self {
-                    frames: Vec::new(),
-                    current_frame: 0,
-                    frame_count: 0,
-                    fps: 0.0,
-                    width: 0,
-                    height: 0,
-                    is_opened: false,
-                });
-            }
-
-            // Placeholder: In reality, you'd decode video frames here
-            // For this implementation, we'll just indicate the capture is open
-            Ok(Self {
-                frames: Vec::new(),
-                current_frame: 0,
+        fn closed() -> Self {
+            Self {
+                #[cfg(feature = "opencv")]
+                inner: None,
+                fps: 0.0,
+                width: 0,
+                height: 0,
                 frame_count: 0,
-                fps: 30.0, // Default FPS
-                width: 640,
-                height: 480,
-                is_opened: true,
-            })
+                is_opened: false,
+            }
         }
 
-        /// Check if video capture is opened
+        /// Check if the capture successfully opened
         pub fn is_opened(&self) -> bool {
             self.is_opened
         }
 
-        /// Read next frame
-        pub fn read(&mut self) -> (bool, Option<Array3<u8>>) {
-            if !self.is_opened || self.current_frame >= self.frame_count {
-                return (false, None);
-            }
-
-            if self.current_frame < self.frames.len() {
-                let frame = self.frames[self.current_frame].clone();
-                self.current_frame += 1;
-                (true, Some(frame))
-            } else {
-                (false, None)
-            }
-        }
-
-        /// Release the video capture
+        /// Release the capture handle
         pub fn release(&mut self) {
             self.is_opened = false;
-            self.frames.clear();
-            self.current_frame = 0;
+            #[cfg(feature = "opencv")]
+            if let Some(mut inner) = self.inner.take() {
+                let _ = inner.release();
+            }
         }
 
-        /// Get video property
+        /// Get cached video properties
         pub fn get(&self, prop: VideoCaptureProperties) -> f64 {
             match prop {
                 VideoCaptureProperties::CapPropFps => self.fps,
@@ -305,6 +285,191 @@ pub mod videocapture {
                 VideoCaptureProperties::CapPropFrameHeight => self.height as f64,
                 VideoCaptureProperties::CapPropFrameCount => self.frame_count as f64,
             }
+        }
+    }
+
+    #[cfg(feature = "opencv")]
+    impl VideoCapture {
+        /// Create a video capture backed by OpenCV
+        pub fn new(filename: &str) -> Result<Self> {
+            let cap = match videoio::VideoCapture::from_file(filename, videoio::CAP_ANY) {
+                Ok(cap) => cap,
+                Err(_) => return Ok(Self::closed()),
+            };
+
+            let opened = cap.is_opened().unwrap_or(false);
+            if !opened {
+                return Ok(Self::closed());
+            }
+
+            let fps = cap.get(videoio::CAP_PROP_FPS).unwrap_or(0.0);
+            let width = cap
+                .get(videoio::CAP_PROP_FRAME_WIDTH)
+                .unwrap_or(0.0)
+                .max(0.0) as i32;
+            let height = cap
+                .get(videoio::CAP_PROP_FRAME_HEIGHT)
+                .unwrap_or(0.0)
+                .max(0.0) as i32;
+            let frame_count_val = cap.get(videoio::CAP_PROP_FRAME_COUNT).unwrap_or(0.0);
+            let frame_count = if frame_count_val.is_finite() && frame_count_val >= 0.0 {
+                frame_count_val.round() as usize
+            } else {
+                0
+            };
+
+            Ok(Self {
+                inner: Some(cap),
+                fps: if fps.is_finite() { fps } else { 0.0 },
+                width,
+                height,
+                frame_count,
+                is_opened: true,
+            })
+        }
+
+        /// Read the next frame using OpenCV's decoder
+        pub fn read(&mut self) -> (bool, Option<Array3<u8>>) {
+            if !self.is_opened {
+                return (false, None);
+            }
+
+            let inner = match self.inner.as_mut() {
+                Some(inner) => inner,
+                None => return (false, None),
+            };
+
+            let mut frame = Mat::default();
+            match inner.read(&mut frame) {
+                Ok(true) => {
+                    if frame.empty() {
+                        return (false, None);
+                    }
+
+                    match Self::mat_to_ndarray(&frame) {
+                        Ok(array) => {
+                            if self.width == 0 || self.height == 0 {
+                                let (h, w, _) = array.dim();
+                                self.width = w as i32;
+                                self.height = h as i32;
+                            }
+
+                            if self.frame_count == 0 {
+                                if let Ok(total) = inner.get(videoio::CAP_PROP_FRAME_COUNT) {
+                                    if total.is_finite() && total >= 0.0 {
+                                        self.frame_count = total.round() as usize;
+                                    }
+                                }
+                            }
+
+                            (true, Some(array))
+                        }
+                        Err(_) => {
+                            self.release();
+                            (false, None)
+                        }
+                    }
+                }
+                Ok(false) => (false, None),
+                Err(_) => {
+                    self.release();
+                    (false, None)
+                }
+            }
+        }
+
+        fn mat_to_ndarray(frame: &Mat) -> Result<Array3<u8>> {
+            let mat_owned;
+            let mat_ref = if frame.typ() == core::CV_8UC3 {
+                frame
+            } else {
+                mat_owned = Self::to_bgr(frame)?;
+                &mat_owned
+            };
+
+            let mut continuous;
+            let mat_ref = if mat_ref.is_continuous() {
+                mat_ref
+            } else {
+                continuous = Mat::default();
+                mat_ref.copy_to(&mut continuous)?;
+                &continuous
+            };
+
+            let height = mat_ref.rows() as usize;
+            let width = mat_ref.cols() as usize;
+            let channels = mat_ref.channels() as usize;
+
+            if channels != 3 {
+                anyhow::bail!("Expected 3-channel frame, got {}", channels);
+            }
+
+            let data = mat_ref.data_bytes()?;
+            let buffer = data.to_vec();
+            let array = Array3::from_shape_vec((height, width, channels), buffer)
+                .map_err(|e| anyhow::anyhow!("Failed to reshape video frame: {}", e))?;
+
+            Ok(array)
+        }
+
+        fn to_bgr(frame: &Mat) -> Result<Mat> {
+            let frame_type = frame.typ();
+
+            if frame_type == core::CV_8UC3 {
+                return Ok(frame.try_clone()?);
+            }
+
+            let mut converted = Mat::default();
+            match frame_type {
+                t if t == core::CV_8UC1 => {
+                    imgproc::cvt_color(
+                        frame,
+                        &mut converted,
+                        imgproc::COLOR_GRAY2BGR,
+                        0,
+                        core::AlgorithmHint::ALGO_HINT_DEFAULT,
+                    )?;
+                }
+                t if t == core::CV_8UC4 => {
+                    imgproc::cvt_color(
+                        frame,
+                        &mut converted,
+                        imgproc::COLOR_BGRA2BGR,
+                        0,
+                        core::AlgorithmHint::ALGO_HINT_DEFAULT,
+                    )?;
+                }
+                t if t == core::CV_16UC3 => {
+                    frame.convert_to(&mut converted, core::CV_8UC3, 1.0 / 256.0, 0.0)?;
+                }
+                other => {
+                    anyhow::bail!("Unsupported video frame type: {}", other);
+                }
+            }
+
+            Ok(converted)
+        }
+    }
+
+    #[cfg(not(feature = "opencv"))]
+    impl VideoCapture {
+        /// Minimal stub when OpenCV support is disabled
+        pub fn new(filename: &str) -> Result<Self> {
+            if Path::new(filename).exists() {
+                Ok(Self {
+                    fps: 0.0,
+                    width: 0,
+                    height: 0,
+                    frame_count: 0,
+                    is_opened: false,
+                })
+            } else {
+                Ok(Self::closed())
+            }
+        }
+
+        pub fn read(&mut self) -> (bool, Option<Array3<u8>>) {
+            (false, None)
         }
     }
 
