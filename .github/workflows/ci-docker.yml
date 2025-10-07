@@ -18,10 +18,10 @@ jobs:
       image-tag: ${{ steps.meta.outputs.tags }}
     steps:
     - uses: actions/checkout@v4
-    
+
     - name: Set up Docker Buildx
       uses: docker/setup-buildx-action@v3
-    
+
     - name: Extract metadata
       id: meta
       uses: docker/metadata-action@v5
@@ -31,7 +31,7 @@ jobs:
           type=ref,event=branch
           type=ref,event=pr
           type=sha,prefix={{branch}}-
-    
+
     - name: Build and push
       id: build
       uses: docker/build-push-action@v5
