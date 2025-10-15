@@ -690,7 +690,7 @@ pub mod constants {
     pub const IMREAD_UNCHANGED: i32 = -1;
 
     pub const COLOR_BGR2RGB: i32 = 4;
-    pub const COLOR_RGB2BGR: i32 = 4;
+    pub const COLOR_RGB2BGR: i32 = 5;
     pub const COLOR_RGB2GRAY: i32 = 7;
     pub const COLOR_GRAY2RGB: i32 = 8;
     pub const COLOR_HSV2RGB: i32 = 55;
