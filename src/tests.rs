@@ -335,4 +335,115 @@ mod opencv_tests {
         assert_eq!(luminance.len(), 1);
         assert!(luminance[0] >= 0.0 && luminance[0] <= 255.0);
     }
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_resize_then_crop_does_not_leave_white_stripes() {
+        use opencv::core::{Mat, Mat_AUTO_STEP, Size, CV_8UC3};
+        use opencv::imgproc::{resize, INTER_LINEAR};
+
+        // Source image with four horizontal bands; if any band turns white we can detect it.
+        let src_height = 96;
+        let src_width = 160;
+        let mut src = Array3::<u8>::zeros((src_height, src_width, 3));
+        let stripe_colors = [
+            [16u8, 32u8, 64u8],
+            [64u8, 128u8, 32u8],
+            [96u8, 48u8, 160u8],
+            [192u8, 96u8, 128u8],
+        ];
+        let stripe_height = src_height / stripe_colors.len();
+        for (stripe_idx, color) in stripe_colors.iter().enumerate() {
+            let start_y = stripe_idx * stripe_height;
+            for y in start_y..start_y + stripe_height {
+                for x in 0..src_width {
+                    src[[y, x, 0]] = color[0];
+                    src[[y, x, 1]] = color[1];
+                    src[[y, x, 2]] = color[2];
+                }
+            }
+        }
+
+        // Destination buffer pre-filled with 255 so untouched pixels would stay white.
+        let target_height = 72;
+        let target_width = 128;
+        let mut resize_buffer = vec![255u8; target_height * target_width * 3];
+
+        unsafe {
+            let src_mat = Mat::new_rows_cols_with_data_unsafe(
+                src_height as i32,
+                src_width as i32,
+                CV_8UC3,
+                src.as_ptr() as *mut std::ffi::c_void,
+                Mat_AUTO_STEP,
+            )
+            .expect("create source mat");
+
+            let mut dst_mat = Mat::new_rows_cols_with_data_unsafe(
+                target_height as i32,
+                target_width as i32,
+                CV_8UC3,
+                resize_buffer.as_mut_ptr() as *mut std::ffi::c_void,
+                Mat_AUTO_STEP,
+            )
+            .expect("create destination mat");
+
+            resize(
+                &src_mat,
+                &mut dst_mat,
+                Size::new(target_width as i32, target_height as i32),
+                0.0,
+                0.0,
+                INTER_LINEAR,
+            )
+            .expect("opencv resize");
+        }
+
+        let resized = Array3::from_shape_vec((target_height, target_width, 3), resize_buffer)
+            .expect("reshape resized buffer");
+
+        let white_pixels_after_resize = resized
+            .as_slice()
+            .expect("contiguous data")
+            .chunks_exact(3)
+            .filter(|px| px[0] == 255 && px[1] == 255 && px[2] == 255)
+            .count();
+        assert_eq!(
+            white_pixels_after_resize, 0,
+            "resize left white pixels behind"
+        );
+
+        // Crop each horizontal stripe and ensure cropping overwrites pre-filled white buffers.
+        let stripe_height_resized = target_height / stripe_colors.len();
+        for stripe_idx in 0..stripe_colors.len() {
+            let start_y = stripe_idx * stripe_height_resized;
+            let mut crop_buffer =
+                vec![255u8; stripe_height_resized * target_width * stripe_colors[0].len()];
+
+            unsafe {
+                crop_raw_buffer(
+                    resized.as_ptr(),
+                    (target_height, target_width, 3),
+                    crop_buffer.as_mut_ptr(),
+                    (start_y, 0, stripe_height_resized, target_width),
+                );
+            }
+
+            let crop =
+                Array3::from_shape_vec((stripe_height_resized, target_width, 3), crop_buffer)
+                    .expect("reshape crop buffer");
+
+            let white_pixels_in_crop = crop
+                .as_slice()
+                .expect("contiguous crop")
+                .chunks_exact(3)
+                .filter(|px| px[0] == 255 && px[1] == 255 && px[2] == 255)
+                .count();
+            assert_eq!(
+                white_pixels_in_crop, 0,
+                "crop {} retained white pixels, indicating unwritten output",
+                stripe_idx
+            );
+        }
+    }
 }
