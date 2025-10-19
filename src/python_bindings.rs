@@ -5,11 +5,15 @@ use numpy::{PyArray3, PyArray4, PyReadonlyArray3, PyReadonlyArray4};
 #[cfg(feature = "python-bindings")]
 use pyo3::prelude::*;
 #[cfg(feature = "python-bindings")]
-use pyo3::types::PyBytes;
+use pyo3::types::{PyAny, PyAnyMethods, PyBytes};
 #[cfg(feature = "python-bindings")]
 use std::collections::VecDeque;
 #[cfg(feature = "python-bindings")]
 use std::sync::{Arc, Mutex};
+#[cfg(feature = "python-bindings")]
+use std::io::Write;
+#[cfg(feature = "python-bindings")]
+use tempfile::TempPath;
 
 #[cfg(feature = "python-bindings")]
 use crate::core::*;
@@ -1343,6 +1347,7 @@ pub fn resize_py<'py>(
 #[pyclass]
 pub struct PyVideoCapture {
     inner: VideoCapture,
+    temp_path: Option<TempPath>,
 }
 
 #[cfg(feature = "python-bindings")]
@@ -1351,9 +1356,73 @@ impl PyVideoCapture {
     #[new]
     fn new(filename: String) -> PyResult<Self> {
         match VideoCapture::new(&filename) {
-            Ok(cap) => Ok(Self { inner: cap }),
+            Ok(cap) => Ok(Self {
+                inner: cap,
+                temp_path: None,
+            }),
             Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
                 "Failed to open video: {}",
+                e
+            ))),
+        }
+    }
+
+    #[classmethod]
+    #[pyo3(signature = (source, *, suffix=None))]
+    /// Create a video capture handle from an in-memory bytes-like object.
+    fn from_bytes(
+        _cls: &Bound<'_, pyo3::types::PyType>,
+        source: &Bound<'_, PyAny>,
+        suffix: Option<&str>,
+    ) -> PyResult<Self> {
+        let data = Self::read_video_bytes(source)?;
+        let suffix = suffix.unwrap_or(".mp4");
+
+        let mut builder = tempfile::Builder::new();
+        builder.prefix("trainingsample-video-");
+        if !suffix.is_empty() {
+            builder.suffix(suffix);
+        }
+
+        let mut temp_file = builder.tempfile().map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Failed to create temporary video file: {}",
+                e
+            ))
+        })?;
+
+        temp_file.write_all(&data).map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Failed to write video data to temporary file: {}",
+                e
+            ))
+        })?;
+        temp_file.flush().map_err(|e| {
+            pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Failed to flush video data to temporary file: {}",
+                e
+            ))
+        })?;
+
+        let path_string = temp_file
+            .path()
+            .to_str()
+            .map(|s| s.to_string())
+            .ok_or_else(|| {
+                pyo3::exceptions::PyRuntimeError::new_err(
+                    "Temporary video file path contains invalid UTF-8",
+                )
+            })?;
+
+        let temp_path = temp_file.into_temp_path();
+
+        match VideoCapture::new(&path_string) {
+            Ok(cap) => Ok(Self {
+                inner: cap,
+                temp_path: Some(temp_path),
+            }),
+            Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
+                "Failed to open video from bytes: {}",
                 e
             ))),
         }
@@ -1375,6 +1444,7 @@ impl PyVideoCapture {
 
     fn release(&mut self) {
         self.inner.release();
+        self.temp_path = None;
     }
 
     fn get(&self, prop: i32) -> f64 {
@@ -1389,6 +1459,34 @@ impl PyVideoCapture {
         };
 
         self.inner.get(prop_enum)
+    }
+}
+
+#[cfg(feature = "python-bindings")]
+impl PyVideoCapture {
+    fn read_video_bytes(source: &Bound<'_, PyAny>) -> PyResult<Vec<u8>> {
+        if let Ok(bytes) = source.extract::<Vec<u8>>() {
+            return Ok(bytes);
+        }
+
+        for method in ["getbuffer", "getvalue"] {
+            if source.hasattr(method)? {
+                let value = source.call_method0(method)?;
+                return value.extract::<Vec<u8>>();
+            }
+        }
+
+        if source.hasattr("read")? {
+            if source.hasattr("seek")? {
+                source.call_method1("seek", (0,))?;
+            }
+            let value = source.call_method0("read")?;
+            return value.extract::<Vec<u8>>();
+        }
+
+        Err(pyo3::exceptions::PyValueError::new_err(
+            "Expected bytes-like object or BytesIO-like source",
+        ))
     }
 }
 
