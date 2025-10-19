@@ -9,9 +9,9 @@ use pyo3::types::{PyAny, PyAnyMethods, PyBytes};
 #[cfg(feature = "python-bindings")]
 use std::collections::VecDeque;
 #[cfg(feature = "python-bindings")]
-use std::sync::{Arc, Mutex};
-#[cfg(feature = "python-bindings")]
 use std::io::Write;
+#[cfg(feature = "python-bindings")]
+use std::sync::{Arc, Mutex};
 #[cfg(feature = "python-bindings")]
 use tempfile::TempPath;
 
