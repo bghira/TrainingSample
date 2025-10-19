@@ -9,14 +9,21 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
+SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-no-itt-no-openjpeg"
 
 echo "Building static OpenCV ${OPENCV_VERSION}..."
 echo "Install directory: ${INSTALL_DIR}"
 
-# Skip if already built
-if [ -d "${INSTALL_DIR}/lib" ] && [ -f "${INSTALL_DIR}/lib/libopencv_world.a" ]; then
-    echo "Static OpenCV already built at ${INSTALL_DIR}"
-    exit 0
+# Skip rebuild when signature matches desired configuration
+if [ -d "${INSTALL_DIR}/lib" ] && [ -f "${INSTALL_DIR}/lib/libopencv_world.a" ] && [ -f "${SIGNATURE_FILE}" ]; then
+    if grep -qx "${BUILD_SIGNATURE}" "${SIGNATURE_FILE}"; then
+        echo "Static OpenCV already built at ${INSTALL_DIR} (signature match)"
+        exit 0
+    fi
+
+    echo "Existing static OpenCV bundle does not match desired configuration. Rebuilding..."
+    rm -rf "${INSTALL_DIR}"
 fi
 
 # Create build directory
@@ -47,6 +54,7 @@ cmake -S "opencv-${OPENCV_VERSION}" \
       -DWITH_IPP=OFF \
       -DWITH_OPENCL=OFF \
       -DWITH_CUDA=OFF \
+      -DWITH_OPENJPEG=OFF \
       -DWITH_FFMPEG=OFF \
       -DWITH_GSTREAMER=OFF \
       -DWITH_V4L=OFF \
@@ -77,6 +85,8 @@ if [ ! -f "${INSTALL_DIR}/lib/libopencv_world.a" ]; then
     ls -R "${INSTALL_DIR}"
     exit 1
 fi
+
+printf '%s\n' "${BUILD_SIGNATURE}" > "${SIGNATURE_FILE}"
 
 echo "Static OpenCV built successfully!"
 echo "Library: ${INSTALL_DIR}/lib/libopencv_world.a"

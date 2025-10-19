@@ -14,6 +14,7 @@ opencv = {version = "0.93", optional = true}
 # Python bindings (optional)
 pyo3 = {version = "0.22", features = ["extension-module"], optional = true}
 rayon = "1.8"
+tempfile = {version = "3.10", optional = true}
 # SIMD optimizations
 wide = {version = "0.7", optional = true}
 
@@ -24,7 +25,7 @@ criterion = {version = "0.5", features = ["html_reports"]}
 default = ["simd"]
 metal = ["dep:metal", "dep:objc"]
 opencv = ["dep:opencv"]
-python-bindings = ["pyo3", "numpy"]
+python-bindings = ["pyo3", "numpy", "dep:tempfile"]
 simd = ["wide"]
 
 [lib]
@@ -37,7 +38,7 @@ description = "High-performance Rust reimplementation of GIL-blocking video/imag
 edition = "2021"
 license = "MIT"
 name = "trainingsample"
-version = "0.2.7"
+version = "0.2.8"
 
 [profile.release]
 codegen-units = 1
