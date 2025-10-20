@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
 SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
-BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-no-itt-no-openjpeg"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-no-itt-no-openjpeg"
 
 echo "Building static OpenCV ${OPENCV_VERSION}..."
 echo "Install directory: ${INSTALL_DIR}"
@@ -52,11 +52,13 @@ cmake -S "opencv-${OPENCV_VERSION}" \
       -DBUILD_TIFF=ON \
       -DBUILD_WEBP=ON \
       -DBUILD_ZLIB=ON \
+      -DBUILD_JASPER=ON \
       -DWITH_JPEG=ON \
       -DWITH_PNG=ON \
       -DWITH_TIFF=ON \
       -DWITH_WEBP=ON \
       -DWITH_ZLIB=ON \
+      -DWITH_JASPER=ON \
       -DBUILD_TESTS=OFF \
       -DBUILD_PERF_TESTS=OFF \
       -DBUILD_EXAMPLES=OFF \
@@ -94,6 +96,7 @@ declare -a CODEC_MAPPINGS=(
     "liblibtiff.a:libtiff.a"
     "liblibwebp.a:libwebp.a"
     "libzlib.a:libz.a"
+    "liblibjasper.a:libjasper.a"
 )
 
 for mapping in "${CODEC_MAPPINGS[@]}"; do
@@ -133,6 +136,7 @@ REQUIRED_ARCHIVES=(
     "libtiff.a"
     "libwebp.a"
     "libz.a"
+    "libjasper.a"
 )
 
 for archive in "${REQUIRED_ARCHIVES[@]}"; do
