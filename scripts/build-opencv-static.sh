@@ -46,6 +46,17 @@ cmake -S "opencv-${OPENCV_VERSION}" \
       -DBUILD_LIST=core,imgproc,imgcodecs,highgui,video,videoio,calib3d,features2d,photo \
       -DBUILD_SHARED_LIBS=OFF \
       -DBUILD_opencv_world=ON \
+      -DOPENCV_FORCE_3RDPARTY_BUILD=ON \
+      -DBUILD_JPEG=ON \
+      -DBUILD_PNG=ON \
+      -DBUILD_TIFF=ON \
+      -DBUILD_WEBP=ON \
+      -DBUILD_ZLIB=ON \
+      -DWITH_JPEG=ON \
+      -DWITH_PNG=ON \
+      -DWITH_TIFF=ON \
+      -DWITH_WEBP=ON \
+      -DWITH_ZLIB=ON \
       -DBUILD_TESTS=OFF \
       -DBUILD_PERF_TESTS=OFF \
       -DBUILD_EXAMPLES=OFF \
