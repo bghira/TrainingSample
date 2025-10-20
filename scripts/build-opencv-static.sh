@@ -5,12 +5,18 @@ set -euo pipefail
 # This eliminates the need for users to install OpenCV system packages
 
 OPENCV_VERSION="4.12.0"
+FFMPEG_VERSION="6.1.1"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
 SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
-BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-no-itt-no-openjpeg"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg"
+
+FFMPEG_BUILD_DIR="${PROJECT_ROOT}/ffmpeg-build-tmp"
+FFMPEG_INSTALL_DIR="${PROJECT_ROOT}/third_party/ffmpeg-static"
+FFMPEG_SIGNATURE_FILE="${FFMPEG_INSTALL_DIR}/build_signature.txt"
+FFMPEG_BUILD_SIGNATURE="ffmpeg-${FFMPEG_VERSION}-static-core"
 
 echo "Building static OpenCV ${OPENCV_VERSION}..."
 echo "Install directory: ${INSTALL_DIR}"
@@ -26,7 +32,96 @@ if [ -d "${INSTALL_DIR}/lib" ] && [ -f "${INSTALL_DIR}/lib/libopencv_world.a" ] 
     rm -rf "${INSTALL_DIR}"
 fi
 
-# Create build directory
+# Build FFmpeg static libraries (minimal feature set for decoding common formats)
+build_ffmpeg() {
+    echo "Ensuring static FFmpeg ${FFMPEG_VERSION} is available..."
+    if [ -d "${FFMPEG_INSTALL_DIR}/lib" ] && [ -f "${FFMPEG_INSTALL_DIR}/lib/libavformat.a" ] && [ -f "${FFMPEG_SIGNATURE_FILE}" ]; then
+        if grep -qx "${FFMPEG_BUILD_SIGNATURE}" "${FFMPEG_SIGNATURE_FILE}"; then
+            echo "Static FFmpeg already built at ${FFMPEG_INSTALL_DIR} (signature match)"
+            return
+        fi
+
+        echo "Existing FFmpeg bundle does not match desired configuration. Rebuilding..."
+        rm -rf "${FFMPEG_INSTALL_DIR}"
+    fi
+
+    mkdir -p "${FFMPEG_BUILD_DIR}"
+    cd "${FFMPEG_BUILD_DIR}"
+
+    if [ ! -d "ffmpeg-${FFMPEG_VERSION}" ]; then
+        echo "Downloading FFmpeg ${FFMPEG_VERSION}..."
+        curl -L "https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.bz2" \
+            -o "ffmpeg-${FFMPEG_VERSION}.tar.bz2"
+        tar -xjf "ffmpeg-${FFMPEG_VERSION}.tar.bz2"
+    fi
+
+    cd "ffmpeg-${FFMPEG_VERSION}"
+
+    echo "Configuring FFmpeg build..."
+    PKG_CONFIG_PATH="${FFMPEG_INSTALL_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+    export PKG_CONFIG_PATH
+
+    ./configure \
+        --prefix="${FFMPEG_INSTALL_DIR}" \
+        --pkg-config-flags="--static" \
+        --extra-cflags="-fPIC" \
+        --extra-cxxflags="-fPIC" \
+        --extra-ldflags="-fPIC" \
+        --enable-static \
+        --disable-shared \
+        --disable-doc \
+        --disable-debug \
+        --disable-autodetect \
+        --disable-hwaccels \
+        --disable-vulkan \
+        --disable-cuvid \
+        --disable-nvenc \
+        --disable-nvdec \
+        --disable-vaapi \
+        --disable-vdpau \
+        --disable-d3d11va \
+        --disable-dxva2 \
+        --disable-alsa \
+        --disable-sdl2 \
+        --disable-libxcb \
+        --disable-iconv \
+        --disable-libdrm \
+        --disable-network \
+        --disable-avdevice \
+        --disable-postproc \
+        --disable-programs \
+        --enable-swscale \
+        --enable-swresample \
+        --enable-avcodec \
+        --enable-avformat \
+        --enable-avutil \
+        --enable-decoder=h264,hevc,mpeg4,vp8,vp9 \
+        --enable-parser=h264,hevc,mpeg4video,vp8,vp9 \
+        --enable-demuxer=mov,matroska,ogg,webm,image2 \
+        --enable-muxer=null \
+        --enable-protocol=file,data,pipe \
+        --enable-bsf=h264_mp4toannexb \
+        --enable-filter=scale || {
+            echo "FFmpeg configure failed"
+            exit 1
+        }
+
+    echo "Building FFmpeg..."
+    make -j"$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+    echo "Installing FFmpeg..."
+    make install
+
+    printf '%s\n' "${FFMPEG_BUILD_SIGNATURE}" > "${FFMPEG_SIGNATURE_FILE}"
+
+    cd "${PROJECT_ROOT}"
+    rm -rf "${FFMPEG_BUILD_DIR}"
+    echo "FFmpeg build complete!"
+}
+
+# Ensure FFmpeg is present before building OpenCV
+build_ffmpeg
+
+# Create build directory for OpenCV
 mkdir -p "${BUILD_DIR}"
 cd "${BUILD_DIR}"
 
@@ -40,6 +135,7 @@ fi
 
 # Configure CMake build
 echo "Configuring CMake build..."
+export PKG_CONFIG_PATH="${FFMPEG_INSTALL_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
 cmake -S "opencv-${OPENCV_VERSION}" \
       -B build \
       -DCMAKE_BUILD_TYPE=Release \
@@ -68,7 +164,8 @@ cmake -S "opencv-${OPENCV_VERSION}" \
       -DWITH_OPENCL=OFF \
       -DWITH_CUDA=OFF \
       -DWITH_OPENJPEG=OFF \
-      -DWITH_FFMPEG=OFF \
+      -DWITH_FFMPEG=ON \
+      -DOPENCV_FFMPEG_USE_FIND_LIBS=ON \
       -DWITH_GSTREAMER=OFF \
       -DWITH_V4L=OFF \
       -DWITH_GTK=OFF \
@@ -114,6 +211,26 @@ for mapping in "${CODEC_MAPPINGS[@]}"; do
     ln -sf "${CANONICAL_NAME}" "${INSTALL_DIR}/lib/${LINK_NAME}"
 done
 
+# Copy FFmpeg static archives
+declare -a FFMPEG_ARCHIVES=(
+    "libavcodec.a"
+    "libavfilter.a"
+    "libavformat.a"
+    "libavutil.a"
+    "libswresample.a"
+    "libswscale.a"
+)
+
+for archive in "${FFMPEG_ARCHIVES[@]}"; do
+    if [ ! -f "${FFMPEG_INSTALL_DIR}/lib/${archive}" ]; then
+        echo "ERROR: FFmpeg archive ${archive} not found in ${FFMPEG_INSTALL_DIR}/lib"
+        ls "${FFMPEG_INSTALL_DIR}/lib"
+        exit 1
+    fi
+
+    cp -f "${FFMPEG_INSTALL_DIR}/lib/${archive}" "${INSTALL_DIR}/lib/${archive}"
+done
+
 # Verify installation - check both lib and lib64 (manylinux uses lib64)
 if [ -d "${INSTALL_DIR}/lib64" ]; then
     # Move from lib64 to lib for consistency (copy to handle reruns safely)
@@ -137,6 +254,12 @@ REQUIRED_ARCHIVES=(
     "libwebp.a"
     "libz.a"
     "libjasper.a"
+    "libavcodec.a"
+    "libavfilter.a"
+    "libavformat.a"
+    "libavutil.a"
+    "libswresample.a"
+    "libswscale.a"
 )
 
 for archive in "${REQUIRED_ARCHIVES[@]}"; do
