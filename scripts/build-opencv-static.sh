@@ -83,12 +83,40 @@ cmake --build build --config Release --target opencv_world -j$(nproc 2>/dev/null
 echo "Installing to ${INSTALL_DIR}..."
 cmake --install build --config Release
 
+# Copy bundled third-party codec archives into the install lib directory and
+# provide canonical aliases (libjpeg.a, libwebp.a, …) for the linker.
+CODEC_LIB_DIR="${BUILD_DIR}/build/3rdparty/lib"
+mkdir -p "${INSTALL_DIR}/lib"
+
+declare -a CODEC_MAPPINGS=(
+    "liblibjpeg-turbo.a:libjpeg.a"
+    "liblibpng.a:libpng.a"
+    "liblibtiff.a:libtiff.a"
+    "liblibwebp.a:libwebp.a"
+    "libzlib.a:libz.a"
+)
+
+for mapping in "${CODEC_MAPPINGS[@]}"; do
+    SRC_ARCHIVE="${CODEC_LIB_DIR}/${mapping%%:*}"
+    CANONICAL_NAME="${mapping%%:*}"
+    LINK_NAME="${mapping##*:}"
+
+    if [ ! -f "${SRC_ARCHIVE}" ]; then
+        echo "ERROR: Expected third-party archive ${SRC_ARCHIVE} was not produced by the OpenCV build"
+        find "${CODEC_LIB_DIR}" -maxdepth 1 -type f -name 'lib*.a' | sed "s#^#  #"
+        exit 1
+    fi
+
+    cp -f "${SRC_ARCHIVE}" "${INSTALL_DIR}/lib/${CANONICAL_NAME}"
+    ln -sf "${CANONICAL_NAME}" "${INSTALL_DIR}/lib/${LINK_NAME}"
+done
+
 # Verify installation - check both lib and lib64 (manylinux uses lib64)
-if [ -f "${INSTALL_DIR}/lib64/libopencv_world.a" ]; then
-    # Move from lib64 to lib for consistency
+if [ -d "${INSTALL_DIR}/lib64" ]; then
+    # Move from lib64 to lib for consistency (copy to handle reruns safely)
     mkdir -p "${INSTALL_DIR}/lib"
-    mv "${INSTALL_DIR}/lib64"/* "${INSTALL_DIR}/lib/"
-    rmdir "${INSTALL_DIR}/lib64"
+    cp -a "${INSTALL_DIR}/lib64/." "${INSTALL_DIR}/lib/"
+    rm -rf "${INSTALL_DIR}/lib64"
 fi
 
 if [ ! -f "${INSTALL_DIR}/lib/libopencv_world.a" ]; then
