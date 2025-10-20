@@ -10,7 +10,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
 SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
-BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-no-itt-no-openjpeg"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-no-itt-no-openjpeg"
 
 echo "Building static OpenCV ${OPENCV_VERSION}..."
 echo "Install directory: ${INSTALL_DIR}"

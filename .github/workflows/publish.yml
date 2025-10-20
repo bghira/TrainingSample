@@ -41,7 +41,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-no-itt-no-openjpeg-linux-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.manylinux }}
+        key: opencv-static-4.12.0-codecs-no-itt-no-openjpeg-linux-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.manylinux }}
 
     - name: Install build dependencies
       run: |
@@ -131,7 +131,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-no-itt-no-openjpeg-macos-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-codecs-no-itt-no-openjpeg-macos-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
