@@ -71,6 +71,7 @@ cmake -S "opencv-${OPENCV_VERSION}" \
       -DWITH_V4L=OFF \
       -DWITH_GTK=OFF \
       -DWITH_QT=OFF \
+      -DWITH_OPENEXR=OFF \
       -DWITH_ITT=OFF \
       -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
 
