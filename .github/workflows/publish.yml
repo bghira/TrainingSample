@@ -105,7 +105,7 @@ jobs:
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,static=stdc++
+        OPENCV_LINK_LIBS: static=opencv_world,static=jpeg,static=png,static=tiff,static=webp,static=z,static=stdc++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
 
     - name: Upload wheels
@@ -159,7 +159,7 @@ jobs:
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,framework=Accelerate,dylib=c++
+        OPENCV_LINK_LIBS: static=opencv_world,static=jpeg,static=png,static=tiff,static=webp,static=z,framework=Accelerate,dylib=c++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
     - name: Upload wheels
       uses: actions/upload-artifact@v4

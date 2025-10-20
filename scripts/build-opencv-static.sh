@@ -86,6 +86,24 @@ if [ ! -f "${INSTALL_DIR}/lib/libopencv_world.a" ]; then
     exit 1
 fi
 
+# Ensure third-party codecs were produced as static archives
+REQUIRED_ARCHIVES=(
+    "libjpeg.a"
+    "libpng.a"
+    "libtiff.a"
+    "libwebp.a"
+    "libz.a"
+)
+
+for archive in "${REQUIRED_ARCHIVES[@]}"; do
+    if [ ! -f "${INSTALL_DIR}/lib/${archive}" ]; then
+        echo "ERROR: Required static archive ${archive} not found in ${INSTALL_DIR}/lib"
+        echo "Available archives:"
+        find "${INSTALL_DIR}" -maxdepth 2 -type f -name 'lib*.a' | sed "s#^#  #"
+        exit 1
+    fi
+done
+
 printf '%s\n' "${BUILD_SIGNATURE}" > "${SIGNATURE_FILE}"
 
 echo "Static OpenCV built successfully!"
