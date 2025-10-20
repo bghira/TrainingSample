@@ -41,7 +41,7 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-no-itt-no-openjpeg-linux-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.manylinux }}
+        key: opencv-static-4.12.0-codecs-jasper-ffmpeg-no-itt-no-openjpeg-linux-${{ matrix.os }}-${{ runner.arch }}-${{ matrix.manylinux }}
 
     - name: Install build dependencies
       run: |
@@ -51,7 +51,7 @@ jobs:
 
         sudo apt-get update
         # Install basic LLVM for opencv-rust bindings codegen
-        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common
+        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget software-properties-common nasm yasm pkg-config
 
         # For Ubuntu 22.04, use the default LLVM 14 instead of PPA to avoid restart issues
         if [ "${{ matrix.os }}" = "ubuntu-22.04" ]; then
@@ -84,7 +84,6 @@ jobs:
         echo "LLVM config at: $(which llvm-config-14 2>/dev/null || which llvm-config-18 2>/dev/null)"
 
     - name: Build static OpenCV
-      if: steps.cache-opencv.outputs.cache-hit != 'true'
       run: |
         ./scripts/build-opencv-static.sh
 
@@ -105,7 +104,7 @@ jobs:
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,static=stdc++
+        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=z,static=jasper,static=stdc++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
 
     - name: Upload wheels
@@ -131,19 +130,18 @@ jobs:
       uses: actions/cache@v4
       with:
         path: third_party/opencv-static
-        key: opencv-static-4.12.0-no-itt-no-openjpeg-macos-${{ runner.os }}-${{ runner.arch }}
+        key: opencv-static-4.12.0-codecs-jasper-ffmpeg-no-itt-no-openjpeg-macos-${{ runner.os }}-${{ runner.arch }}
 
     - name: Install build dependencies
       run: |
         # Install LLVM for opencv-rust bindings codegen (no need for system OpenCV anymore)
-        brew install llvm cmake
+        brew install llvm cmake nasm pkg-config
         # Set up LLVM environment for opencv-rust bindings (keg-only installation)
         echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
         echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
 
     - name: Build static OpenCV
-      if: steps.cache-opencv.outputs.cache-hit != 'true'
       run: |
         ./scripts/build-opencv-static.sh
 
@@ -159,7 +157,7 @@ jobs:
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,framework=Accelerate,dylib=c++
+        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=z,static=jasper,framework=Accelerate,dylib=c++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
     - name: Upload wheels
       uses: actions/upload-artifact@v4
