@@ -69,7 +69,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: 1.85
+        toolchain: 1.89
         components: rustfmt, clippy
 
     - name: Cache cargo registry
@@ -169,7 +169,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: 1.85
+        toolchain: 1.89
         components: rustfmt, clippy
 
     - name: Install maturin (Linux/macOS)
@@ -260,7 +260,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: 1.85
+        toolchain: 1.89
         components: rustfmt, clippy
 
     - name: Install cargo-audit
@@ -342,7 +342,7 @@ jobs:
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
-        toolchain: 1.85
+        toolchain: 1.89
 
     - name: Install maturin (Linux/macOS)
       run: pip install maturin[patchelf]

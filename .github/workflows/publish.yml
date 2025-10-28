@@ -220,7 +220,6 @@ jobs:
             manylinux: ''
             python: '3.11'
     steps:
-    - uses: actions/checkout@v4
     - uses: actions/download-artifact@v4
       with:
         pattern: wheels-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python }}
