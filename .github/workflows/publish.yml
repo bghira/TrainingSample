@@ -228,7 +228,15 @@ jobs:
       with:
         python-version: ${{ matrix.python }}
     - run: |
-        pip install "${{ github.workspace }}"/dist/*.whl
+        set -euo pipefail
+        wheel="$(find "${{ github.workspace }}/dist" -type f -name '*.whl' | sort | head -n 1)"
+        if [ -z "${wheel}" ]; then
+          echo "No wheel files found under dist/"
+          find "${{ github.workspace }}/dist" -maxdepth 3 -type f || true
+          exit 1
+        fi
+        echo "Installing wheel: ${wheel}"
+        pip install "${wheel}"
         python -c 'import trainingsample' || echo "Import failed"
 
   release:
