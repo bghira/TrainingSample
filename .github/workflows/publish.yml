@@ -107,10 +107,16 @@ jobs:
         OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=z,static=jasper,static=stdc++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
 
+    - name: Repair wheels
+      env:
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+      run: |
+        ./scripts/repair-wheel.sh dist/*.whl
+
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-linux-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python }}
+        name: wheels-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python }}
         path: dist
 
 
@@ -157,12 +163,17 @@ jobs:
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=z,static=jasper,framework=Accelerate,dylib=c++
+        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=jasper,framework=Accelerate,dylib=c++,static=libtegra_hal,tbb,static=ittnotify,framework=OpenCL,z
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
+    - name: Repair wheels
+      env:
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+      run: |
+        ./scripts/repair-wheel.sh dist/*.whl
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-macos-${{ matrix.target }}
+        name: wheels-macos-latest-${{ matrix.target }}-py3.11
         path: dist
 
   sdist:
@@ -180,10 +191,50 @@ jobs:
         name: wheels-sdist
         path: dist
 
+  smoketest:
+    runs-on: ${{ matrix.os }}
+    needs: [linux, macos]
+    strategy:
+      matrix:
+        include:
+          # Ubuntu 22.04 (libc 2.35)
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.11'
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.12'
+          # Ubuntu 24.04 (libc 2.39)
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.11'
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.12'
+          - os: macos-latest
+            target: aarch64
+            manylinux: ''
+            python: '3.11'
+    steps:
+    - uses: actions/download-artifact@v4
+      with:
+        pattern: wheels-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python }}
+        path: dist
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+    - run: |
+        pip install dist/*.whl
+        python -c 'import trainingsample' || echo "Import failed"
+
   release:
     name: Release
     runs-on: ubuntu-latest
-    needs: [linux, macos, sdist]
+    needs: [smoketest, sdist]
     steps:
     - uses: actions/download-artifact@v4
       with:
@@ -194,13 +245,6 @@ jobs:
       run: |
         echo "Built wheels:"
         ls -la dist/
-        echo "Wheel information:"
-        for wheel in dist/*.whl; do
-          if [ -f "$wheel" ]; then
-            echo "Checking $wheel:"
-            python -c "import zipfile; print(zipfile.ZipFile('$wheel').namelist()[:3])" || echo "  Could not read wheel contents"
-          fi
-        done
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@v1.12.4
       with:
