@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
 SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
-BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg-tbb"
 
 FFMPEG_BUILD_DIR="${PROJECT_ROOT}/ffmpeg-build-tmp"
 FFMPEG_INSTALL_DIR="${PROJECT_ROOT}/third_party/ffmpeg-static"
@@ -24,6 +24,11 @@ echo "Install directory: ${INSTALL_DIR}"
 # Skip rebuild when signature matches desired configuration
 if [ -d "${INSTALL_DIR}/lib" ] && [ -f "${INSTALL_DIR}/lib/libopencv_world.a" ] && [ -f "${SIGNATURE_FILE}" ]; then
     if grep -qx "${BUILD_SIGNATURE}" "${SIGNATURE_FILE}"; then
+        # Ensure the promoted TBB archive exists for callers linking against it.
+        if [ -f "${INSTALL_DIR}/lib/opencv4/3rdparty/libtbb.a" ] && [ ! -f "${INSTALL_DIR}/lib/libtbb.a" ]; then
+            cp -f "${INSTALL_DIR}/lib/opencv4/3rdparty/libtbb.a" "${INSTALL_DIR}/lib/libtbb.a"
+        fi
+
         echo "Static OpenCV already built at ${INSTALL_DIR} (signature match)"
         exit 0
     fi
@@ -172,6 +177,8 @@ cmake -S "opencv-${OPENCV_VERSION}" \
       -DWITH_QT=OFF \
       -DWITH_OPENEXR=OFF \
       -DWITH_ITT=OFF \
+      -DBUILD_TBB=ON \
+      -DWITH_TBB=ON \
       -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
 
 # Build opencv_world (single unified library)
@@ -210,6 +217,12 @@ for mapping in "${CODEC_MAPPINGS[@]}"; do
     cp -f "${SRC_ARCHIVE}" "${INSTALL_DIR}/lib/${CANONICAL_NAME}"
     ln -sf "${CANONICAL_NAME}" "${INSTALL_DIR}/lib/${LINK_NAME}"
 done
+
+# Promote Intel TBB static library into the top-level lib directory for easier linking.
+TBB_ARCHIVE="${INSTALL_DIR}/lib/opencv4/3rdparty/libtbb.a"
+if [ -f "${TBB_ARCHIVE}" ]; then
+    cp -f "${TBB_ARCHIVE}" "${INSTALL_DIR}/lib/libtbb.a"
+fi
 
 # Copy FFmpeg static archives
 declare -a FFMPEG_ARCHIVES=(
