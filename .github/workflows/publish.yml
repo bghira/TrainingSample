@@ -106,6 +106,12 @@ jobs:
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
         OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=z,static=jasper,static=stdc++
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
+  
+    - name: Repair wheels
+      env:
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+      run: |
+        ./scripts/repair-wheel.sh dist/*.whl
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -159,6 +165,11 @@ jobs:
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
         OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=jasper,framework=Accelerate,dylib=c++,static=libtegra_hal,tbb,static=ittnotify,framework=OpenCL,z
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
+    - name: Repair wheels
+      env:
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+      run: |
+        ./scripts/repair-wheel.sh dist/*.whl
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
