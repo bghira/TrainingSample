@@ -141,45 +141,55 @@ fi
 # Configure CMake build
 echo "Configuring CMake build..."
 export PKG_CONFIG_PATH="${FFMPEG_INSTALL_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
-cmake -S "opencv-${OPENCV_VERSION}" \
-      -B build \
-      -DCMAKE_BUILD_TYPE=Release \
-      -DBUILD_LIST=core,imgproc,imgcodecs,highgui,video,videoio,calib3d,features2d,photo \
-      -DBUILD_SHARED_LIBS=OFF \
-      -DBUILD_opencv_world=ON \
-      -DOPENCV_FORCE_3RDPARTY_BUILD=ON \
-      -DBUILD_JPEG=ON \
-      -DBUILD_PNG=ON \
-      -DBUILD_TIFF=ON \
-      -DBUILD_WEBP=ON \
-      -DBUILD_ZLIB=ON \
-      -DBUILD_JASPER=ON \
-      -DWITH_JPEG=ON \
-      -DWITH_PNG=ON \
-      -DWITH_TIFF=ON \
-      -DWITH_WEBP=ON \
-      -DWITH_ZLIB=ON \
-      -DWITH_JASPER=ON \
-      -DBUILD_TESTS=OFF \
-      -DBUILD_PERF_TESTS=OFF \
-      -DBUILD_EXAMPLES=OFF \
-      -DBUILD_opencv_apps=OFF \
-      -DBUILD_DOCS=OFF \
-      -DWITH_IPP=OFF \
-      -DWITH_OPENCL=OFF \
-      -DWITH_CUDA=OFF \
-      -DWITH_OPENJPEG=OFF \
-      -DWITH_FFMPEG=ON \
-      -DOPENCV_FFMPEG_USE_FIND_LIBS=ON \
-      -DWITH_GSTREAMER=OFF \
-      -DWITH_V4L=OFF \
-      -DWITH_GTK=OFF \
-      -DWITH_QT=OFF \
-      -DWITH_OPENEXR=OFF \
-      -DWITH_ITT=OFF \
-      -DBUILD_TBB=ON \
-      -DWITH_TBB=ON \
-      -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
+
+CMAKE_ARGS=(
+    -S "opencv-${OPENCV_VERSION}"
+    -B build
+    -DCMAKE_BUILD_TYPE=Release
+    -DBUILD_LIST=core,imgproc,imgcodecs,highgui,video,videoio,calib3d,features2d,photo
+    -DBUILD_SHARED_LIBS=OFF
+    -DBUILD_opencv_world=ON
+    -DOPENCV_FORCE_3RDPARTY_BUILD=ON
+    -DBUILD_JPEG=ON
+    -DBUILD_PNG=ON
+    -DBUILD_TIFF=ON
+    -DBUILD_WEBP=ON
+    -DBUILD_ZLIB=ON
+    -DBUILD_JASPER=ON
+    -DWITH_JPEG=ON
+    -DWITH_PNG=ON
+    -DWITH_TIFF=ON
+    -DWITH_WEBP=ON
+    -DWITH_ZLIB=ON
+    -DWITH_JASPER=ON
+    -DBUILD_TESTS=OFF
+    -DBUILD_PERF_TESTS=OFF
+    -DBUILD_EXAMPLES=OFF
+    -DBUILD_opencv_apps=OFF
+    -DBUILD_DOCS=OFF
+    -DWITH_IPP=OFF
+    -DWITH_OPENCL=OFF
+    -DWITH_CUDA=OFF
+    -DWITH_OPENJPEG=OFF
+    -DWITH_FFMPEG=ON
+    -DOPENCV_FFMPEG_USE_FIND_LIBS=ON
+    -DWITH_GSTREAMER=OFF
+    -DWITH_V4L=OFF
+    -DWITH_GTK=OFF
+    -DWITH_QT=OFF
+    -DWITH_OPENEXR=OFF
+    -DWITH_ITT=OFF
+    -DBUILD_TBB=ON
+    -DWITH_TBB=ON
+    -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
+)
+
+if [[ "$(uname)" == "Darwin" ]]; then
+    echo "Detected macOS host; disabling oneTBB context switching to avoid macOS 14+ ucontext deprecation."
+    CMAKE_ARGS+=(-DTBB_DISABLE_CONTEXT_SWITCHING=ON)
+fi
+
+cmake "${CMAKE_ARGS[@]}"
 
 # Build opencv_world (single unified library)
 echo "Building OpenCV (this may take several minutes)..."
