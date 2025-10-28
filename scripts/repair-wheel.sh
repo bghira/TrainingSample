@@ -2,4 +2,4 @@
 
 pip install repairwheel
 
-repairwheel -o ./dist/ -l "${OPENCV_LINK_PATHS}" "$@"
+repairwheel -o $(dirname "$1") -l "${OPENCV_LINK_PATHS}" "$1"
