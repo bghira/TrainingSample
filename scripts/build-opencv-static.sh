@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
 SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
-BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg-tbb-xopen"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg-tbb-xopen-carotene"
 
 FFMPEG_BUILD_DIR="${PROJECT_ROOT}/ffmpeg-build-tmp"
 FFMPEG_INSTALL_DIR="${PROJECT_ROOT}/third_party/ffmpeg-static"
@@ -186,7 +186,11 @@ CMAKE_ARGS=(
 
 if [[ "$(uname)" == "Darwin" ]]; then
     echo "Detected macOS host; disabling oneTBB context switching to avoid macOS 14+ ucontext deprecation."
-    CMAKE_ARGS+=(-DTBB_DISABLE_CONTEXT_SWITCHING=ON)
+    echo "Detected macOS host; disabling Carotene to avoid linking issue."
+    CMAKE_ARGS+=(
+        -DTBB_DISABLE_CONTEXT_SWITCHING=ON
+        -DWITH_CAROTENE=OFF
+    )
 
     # macOS 14+ requires defining _XOPEN_SOURCE to access deprecated ucontext APIs used by oneTBB.
     XOPEN_FLAG="-D_XOPEN_SOURCE=1"
