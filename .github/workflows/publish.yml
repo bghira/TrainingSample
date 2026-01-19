@@ -21,6 +21,10 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_35
             python: '3.12'
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.13'
           # Ubuntu 24.04 (libc 2.39)
           - os: ubuntu-24.04
             target: x86_64
@@ -30,6 +34,10 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_39
             python: '3.12'
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.13'
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -128,11 +136,12 @@ jobs:
     strategy:
       matrix:
         target: [aarch64]
+        python: ['3.11', '3.12', '3.13']
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
       with:
-        python-version: '3.11'
+        python-version: ${{ matrix.python }}
 
     - name: Cache static OpenCV
       id: cache-opencv
@@ -176,7 +185,7 @@ jobs:
     - name: Upload wheels
       uses: actions/upload-artifact@v4
       with:
-        name: wheels-macos-latest-${{ matrix.target }}-py3.11
+        name: wheels-macos-latest-${{ matrix.target }}-py${{ matrix.python }}
         path: dist
 
   sdist:
@@ -209,6 +218,10 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_35
             python: '3.12'
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.13'
           # Ubuntu 24.04 (libc 2.39)
           - os: ubuntu-24.04
             target: x86_64
@@ -218,10 +231,22 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_39
             python: '3.12'
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.13'
           - os: macos-latest
             target: aarch64
             manylinux: ''
             python: '3.11'
+          - os: macos-latest
+            target: aarch64
+            manylinux: ''
+            python: '3.12'
+          - os: macos-latest
+            target: aarch64
+            manylinux: ''
+            python: '3.13'
     steps:
     - uses: actions/download-artifact@v4
       with:
