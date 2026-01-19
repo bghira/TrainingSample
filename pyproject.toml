@@ -7,7 +7,10 @@ authors = [{name = "bghira", email = "bghira@users.noreply.github.com"}]
 classifiers = [
   "Programming Language :: Rust",
   "Programming Language :: Python :: Implementation :: CPython",
-  "Programming Language :: Python :: Implementation :: PyPy"
+  "Programming Language :: Python :: Implementation :: PyPy",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13"
 ]
 dependencies = ["numpy>=1.21.0", "pillow>=8.0.0"]
 description = "High-performance Rust reimplementation of GIL-blocking video/image operations"
@@ -35,7 +38,7 @@ extend-exclude = '''
 '''
 include = '\.pyi?$'
 line-length = 88
-target-version = ['py311']
+target-version = ['py311', 'py312', 'py313']
 
 [tool.isort]
 ensure_newline_before_comments = true
