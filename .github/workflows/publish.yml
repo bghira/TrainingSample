@@ -167,7 +167,7 @@ jobs:
       uses: PyO3/maturin-action@v1
       with:
         target: ${{ matrix.target }}
-        args: --release --out dist --find-interpreter --no-default-features --features python-bindings,simd,opencv,metal
+        args: --release --out dist -i python --no-default-features --features python-bindings,simd,opencv,metal
         sccache: 'false'
       env:
         # Use stable ABI for forward compatibility
