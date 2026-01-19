@@ -119,7 +119,10 @@ jobs:
       env:
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
       run: |
-        ./scripts/repair-wheel.sh "${{ github.workspace }}/dist/*.whl"
+        ./scripts/repair-wheel.sh dist/*.whl
+    - name: Prune unrepaired wheels
+      run: |
+        find dist -type f -name '*.linux_*.whl' -print -delete
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
@@ -172,7 +175,7 @@ jobs:
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
-        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=jasper,static=tbb,framework=Accelerate,dylib=c++,framework=OpenCL,z
+        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=jasper,framework=Accelerate,dylib=c++,framework=OpenCL,z
         OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
     - name: Repair wheels
       env:
@@ -278,6 +281,9 @@ jobs:
       run: |
         echo "Built wheels:"
         ls -la dist/
+    - name: Prune unsupported linux-tag wheels
+      run: |
+        find dist -type f -name '*.linux_*.whl' -print -delete
     - name: Publish to PyPI
       uses: pypa/gh-action-pypi-publish@v1.12.4
       with:

@@ -11,7 +11,7 @@ PROJECT_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 BUILD_DIR="${PROJECT_ROOT}/opencv-build-tmp"
 INSTALL_DIR="${PROJECT_ROOT}/third_party/opencv-static"
 SIGNATURE_FILE="${INSTALL_DIR}/build_signature.txt"
-BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg-tbb-xopen-carotene"
+BUILD_SIGNATURE="opencv-${OPENCV_VERSION}-static-codecs-jasper-ffmpeg-no-itt-no-openjpeg-no-tbb"
 
 FFMPEG_BUILD_DIR="${PROJECT_ROOT}/ffmpeg-build-tmp"
 FFMPEG_INSTALL_DIR="${PROJECT_ROOT}/third_party/ffmpeg-static"
@@ -24,11 +24,6 @@ echo "Install directory: ${INSTALL_DIR}"
 # Skip rebuild when signature matches desired configuration
 if [ -d "${INSTALL_DIR}/lib" ] && [ -f "${INSTALL_DIR}/lib/libopencv_world.a" ] && [ -f "${SIGNATURE_FILE}" ]; then
     if grep -qx "${BUILD_SIGNATURE}" "${SIGNATURE_FILE}"; then
-        # Ensure the promoted TBB archive exists for callers linking against it.
-        if [ -f "${INSTALL_DIR}/lib/opencv4/3rdparty/libtbb.a" ] && [ ! -f "${INSTALL_DIR}/lib/libtbb.a" ]; then
-            cp -f "${INSTALL_DIR}/lib/opencv4/3rdparty/libtbb.a" "${INSTALL_DIR}/lib/libtbb.a"
-        fi
-
         echo "Static OpenCV already built at ${INSTALL_DIR} (signature match)"
         exit 0
     fi
@@ -179,29 +174,16 @@ CMAKE_ARGS=(
     -DWITH_QT=OFF
     -DWITH_OPENEXR=OFF
     -DWITH_ITT=OFF
-    -DBUILD_TBB=ON
-    -DWITH_TBB=ON
+    -DBUILD_TBB=OFF
+    -DWITH_TBB=OFF
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
 )
 
 if [[ "$(uname)" == "Darwin" ]]; then
-    echo "Detected macOS host; disabling oneTBB context switching to avoid macOS 14+ ucontext deprecation."
     echo "Detected macOS host; disabling Carotene to avoid linking issue."
     CMAKE_ARGS+=(
-        -DTBB_DISABLE_CONTEXT_SWITCHING=ON
         -DWITH_CAROTENE=OFF
     )
-
-    # macOS 14+ requires defining _XOPEN_SOURCE to access deprecated ucontext APIs used by oneTBB.
-    XOPEN_FLAG="-D_XOPEN_SOURCE=1"
-    case "${CFLAGS:-}" in
-        *-D_XOPEN_SOURCE=*) ;;
-        *) export CFLAGS="${CFLAGS:+${CFLAGS} }${XOPEN_FLAG}" ;;
-    esac
-    case "${CXXFLAGS:-}" in
-        *-D_XOPEN_SOURCE=*) ;;
-        *) export CXXFLAGS="${CXXFLAGS:+${CXXFLAGS} }${XOPEN_FLAG}" ;;
-    esac
 fi
 
 cmake "${CMAKE_ARGS[@]}"
@@ -242,12 +224,6 @@ for mapping in "${CODEC_MAPPINGS[@]}"; do
     cp -f "${SRC_ARCHIVE}" "${INSTALL_DIR}/lib/${CANONICAL_NAME}"
     ln -sf "${CANONICAL_NAME}" "${INSTALL_DIR}/lib/${LINK_NAME}"
 done
-
-# Promote Intel TBB static library into the top-level lib directory for easier linking.
-TBB_ARCHIVE="${INSTALL_DIR}/lib/opencv4/3rdparty/libtbb.a"
-if [ -f "${TBB_ARCHIVE}" ]; then
-    cp -f "${TBB_ARCHIVE}" "${INSTALL_DIR}/lib/libtbb.a"
-fi
 
 # Copy FFmpeg static archives
 declare -a FFMPEG_ARCHIVES=(
