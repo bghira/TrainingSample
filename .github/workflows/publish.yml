@@ -131,6 +131,87 @@ jobs:
         path: dist
 
 
+  linux-aarch64:
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ matrix.python }}
+
+    - name: Cache static OpenCV
+      id: cache-opencv
+      uses: actions/cache@v4
+      with:
+        path: third_party/opencv-static
+        key: opencv-static-4.12.0-codecs-jasper-ffmpeg-no-itt-no-openjpeg-linux-aarch64-${{ runner.arch }}-manylinux_2_39
+
+    - name: Install build dependencies
+      run: |
+        export DEBIAN_FRONTEND=noninteractive
+
+        sudo apt-get update
+        # Install basic LLVM for opencv-rust bindings codegen
+        sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget nasm yasm pkg-config
+
+        # Ubuntu 24.04 has LLVM 18 by default
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
+
+        LIBCLANG_PATH="/usr/lib/llvm-18/lib"
+
+        # Verify the file exists at the expected location
+        if [ ! -f "$LIBCLANG_PATH/libclang.so" ]; then
+          # Fallback to targeted search if expected location doesn't exist
+          LIBCLANG_PATH=$(find /usr/lib/llvm* -name "libclang.so" 2>/dev/null | head -1 | xargs dirname)
+        fi
+
+        echo "LIBCLANG_PATH=$LIBCLANG_PATH" >> $GITHUB_ENV
+        echo "LD_LIBRARY_PATH=$LIBCLANG_PATH:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+        echo "Using libclang.so at: $LIBCLANG_PATH/libclang.so"
+
+    - name: Build static OpenCV
+      run: |
+        ./scripts/build-opencv-static.sh
+
+    - name: Build wheels
+      uses: PyO3/maturin-action@v1
+      with:
+        target: aarch64
+        args: --release --out dist --no-default-features --features python-bindings,simd,opencv
+        sccache: 'false'
+        container: off
+        manylinux: manylinux_2_39
+      env:
+        # Use stable ABI for forward compatibility
+        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
+        # LLVM for opencv-rust bindings (from earlier install step)
+        LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
+        LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
+        # OpenCV static linking configuration
+        OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=z,static=jasper,static=stdc++
+        OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
+
+    - name: Repair wheels
+      env:
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+      run: |
+        ./scripts/repair-wheel.sh dist/*.whl
+    - name: Prune unrepaired wheels
+      run: |
+        find dist -type f -name '*.linux_*.whl' -print -delete
+
+    - name: Upload wheels
+      uses: actions/upload-artifact@v4
+      with:
+        name: wheels-linux-aarch64-py${{ matrix.python }}
+        path: dist
+
   macos:
     runs-on: macos-latest
     strategy:
@@ -205,7 +286,7 @@ jobs:
 
   smoketest:
     runs-on: ${{ matrix.os }}
-    needs: [linux, macos]
+    needs: [linux, linux-aarch64, macos]
     strategy:
       matrix:
         include:
@@ -214,43 +295,69 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_35
             python: '3.11'
+            artifact_name: wheels-ubuntu-22.04-x86_64-py3.11
           - os: ubuntu-22.04
             target: x86_64
             manylinux: manylinux_2_35
             python: '3.12'
+            artifact_name: wheels-ubuntu-22.04-x86_64-py3.12
           - os: ubuntu-22.04
             target: x86_64
             manylinux: manylinux_2_35
             python: '3.13'
+            artifact_name: wheels-ubuntu-22.04-x86_64-py3.13
           # Ubuntu 24.04 (libc 2.39)
           - os: ubuntu-24.04
             target: x86_64
             manylinux: manylinux_2_39
             python: '3.11'
+            artifact_name: wheels-ubuntu-24.04-x86_64-py3.11
           - os: ubuntu-24.04
             target: x86_64
             manylinux: manylinux_2_39
             python: '3.12'
+            artifact_name: wheels-ubuntu-24.04-x86_64-py3.12
           - os: ubuntu-24.04
             target: x86_64
             manylinux: manylinux_2_39
             python: '3.13'
+            artifact_name: wheels-ubuntu-24.04-x86_64-py3.13
+          # Linux aarch64 (DGX Spark / GB10)
+          - os: ubuntu-24.04-arm
+            target: aarch64
+            manylinux: manylinux_2_39
+            python: '3.11'
+            artifact_name: wheels-linux-aarch64-py3.11
+          - os: ubuntu-24.04-arm
+            target: aarch64
+            manylinux: manylinux_2_39
+            python: '3.12'
+            artifact_name: wheels-linux-aarch64-py3.12
+          - os: ubuntu-24.04-arm
+            target: aarch64
+            manylinux: manylinux_2_39
+            python: '3.13'
+            artifact_name: wheels-linux-aarch64-py3.13
+          # macOS aarch64
           - os: macos-latest
             target: aarch64
             manylinux: ''
             python: '3.11'
+            artifact_name: wheels-macos-latest-aarch64-py3.11
           - os: macos-latest
             target: aarch64
             manylinux: ''
             python: '3.12'
+            artifact_name: wheels-macos-latest-aarch64-py3.12
           - os: macos-latest
             target: aarch64
             manylinux: ''
             python: '3.13'
+            artifact_name: wheels-macos-latest-aarch64-py3.13
     steps:
     - uses: actions/download-artifact@v4
       with:
-        pattern: wheels-${{ matrix.os }}-${{ matrix.target }}-py${{ matrix.python }}
+        pattern: ${{ matrix.artifact_name }}
         path: dist
     - uses: actions/setup-python@v5
       with:
