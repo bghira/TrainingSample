@@ -179,8 +179,10 @@ CMAKE_ARGS=(
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
 )
 
-if [[ "$(uname)" == "Darwin" ]]; then
-    echo "Detected macOS host; disabling Carotene to avoid linking issue."
+# Disable Carotene (ARM NEON optimizations) to avoid undefined symbol errors
+# when statically linking. Carotene requires runtime library that isn't bundled.
+if [[ "$(uname)" == "Darwin" ]] || [[ "$(uname -m)" == "aarch64" ]] || [[ "$(uname -m)" == "arm64" ]]; then
+    echo "Detected ARM host; disabling Carotene to avoid linking issue."
     CMAKE_ARGS+=(
         -DWITH_CAROTENE=OFF
     )
