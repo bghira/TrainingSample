@@ -32,12 +32,12 @@ jobs:
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
 
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
+        # Build OpenCV 4.11 from source since Ubuntu 24.04 only has 4.6
+        echo "Building OpenCV 4.11 from source..."
         cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
+        wget -q https://github.com/opencv/opencv/archive/4.11.0.tar.gz
+        tar -xzf 4.11.0.tar.gz
+        cd opencv-4.11.0
         mkdir build
         cd build
         cmake \
@@ -127,12 +127,12 @@ jobs:
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
 
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
+        # Build OpenCV 4.11 from source since Ubuntu 24.04 only has 4.6
+        echo "Building OpenCV 4.11 from source..."
         cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
+        wget -q https://github.com/opencv/opencv/archive/4.11.0.tar.gz
+        tar -xzf 4.11.0.tar.gz
+        cd opencv-4.11.0
         mkdir build
         cd build
         cmake \
@@ -218,12 +218,12 @@ jobs:
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
 
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
+        # Build OpenCV 4.11 from source since Ubuntu 24.04 only has 4.6
+        echo "Building OpenCV 4.11 from source..."
         cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
+        wget -q https://github.com/opencv/opencv/archive/4.11.0.tar.gz
+        tar -xzf 4.11.0.tar.gz
+        cd opencv-4.11.0
         mkdir build
         cd build
         cmake \
@@ -298,12 +298,12 @@ jobs:
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
 
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
+        # Build OpenCV 4.11 from source since Ubuntu 24.04 only has 4.6
+        echo "Building OpenCV 4.11 from source..."
         cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
+        wget -q https://github.com/opencv/opencv/archive/4.11.0.tar.gz
+        tar -xzf 4.11.0.tar.gz
+        cd opencv-4.11.0
         mkdir build
         cd build
         cmake \
@@ -348,19 +348,19 @@ jobs:
     - name: Install maturin (Linux/macOS)
       run: pip install maturin[patchelf]
 
-    - name: Install OpenCV (macOS)
+    - name: Install OpenCV build dependencies (macOS)
       if: runner.os == 'macOS'
       run: |
-        # Install OpenCV and LLVM via Homebrew
-        brew install opencv llvm
+        # Build against a pinned OpenCV version instead of Homebrew's moving target
+        brew install llvm cmake nasm pkg-config
         # Set up LLVM environment for opencv-rust bindings (keg-only installation)
         echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
         echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Set up OpenCV environment
-        echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
-        echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
-        echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
+
+    - name: Build static OpenCV (macOS)
+      if: runner.os == 'macOS'
+      run: ./scripts/build-opencv-static.sh
 
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
@@ -369,6 +369,11 @@ jobs:
     - name: Build wheels (macOS)
       if: runner.os == 'macOS'
       run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv,metal
+      env:
+        OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
+        OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
+        OPENCV_LINK_LIBS: static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=jpeg,static=png,static=tiff,static=webp,static=jasper,framework=Accelerate,dylib=c++,framework=OpenCL,z
+        OPENCV_DISABLE_PROBES: pkg_config,cmake,vcpkg,vcpkg_cmake
 
 
     - name: Upload wheels
@@ -398,12 +403,12 @@ jobs:
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
-        # Build OpenCV 4.12 from source
-        echo "Building OpenCV 4.12 from source..."
+        # Build OpenCV 4.11 from source
+        echo "Building OpenCV 4.11 from source..."
         cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
+        wget -q https://github.com/opencv/opencv/archive/4.11.0.tar.gz
+        tar -xzf 4.11.0.tar.gz
+        cd opencv-4.11.0
         mkdir build
         cd build
         cmake \
