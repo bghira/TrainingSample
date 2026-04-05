@@ -11,7 +11,7 @@ numpy = {version = "0.22", optional = true}
 objc = {version = "0.2", optional = true}
 # OpenCV bindings for performance parity
 # Limit binding generation to the modules this crate actually uses.
-opencv = {version = "0.93", optional = true, default-features = false, features = ["clang-runtime", "imgproc", "videoio"]}
+opencv = {version = "0.98", optional = true, default-features = false, features = ["clang-runtime", "imgproc", "videoio"]}
 # Python bindings (optional)
 pyo3 = {version = "0.22", features = ["extension-module"], optional = true}
 rayon = "1.8"
