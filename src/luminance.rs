@@ -49,21 +49,8 @@ pub unsafe fn calculate_luminance_raw_buffer(
     height: usize,
     channels: usize,
 ) -> f64 {
-    if channels != 3 {
+    if channels != 3 || width == 0 || height == 0 {
         return 0.0;
-    }
-
-    let pixel_count = width * height;
-
-    // Adaptive SIMD threshold: use SIMD only for images >64K pixels (256x256)
-    const SIMD_THRESHOLD: usize = 65536;
-
-    #[cfg(feature = "simd")]
-    {
-        if pixel_count > SIMD_THRESHOLD {
-            // Use SIMD for large images
-            return calculate_luminance_raw_buffer_simd(rgb_ptr, width, height, channels);
-        }
     }
 
     // Use scalar for small images or when SIMD is not available
@@ -103,6 +90,7 @@ unsafe fn calculate_luminance_raw_buffer_scalar(
 ///
 /// # Safety
 /// Same safety requirements as `calculate_luminance_raw_buffer`
+#[allow(dead_code)]
 unsafe fn calculate_luminance_raw_buffer_simd(
     rgb_ptr: *const u8,
     width: usize,
@@ -132,6 +120,7 @@ unsafe fn calculate_luminance_raw_buffer_simd(
 
 #[cfg(any(target_arch = "x86_64", target_arch = "x86"))]
 #[target_feature(enable = "avx2")]
+#[allow(dead_code)]
 unsafe fn calculate_luminance_raw_avx2(rgb_ptr: *const u8, pixel_count: usize) -> f64 {
     use std::arch::x86_64::*;
 
@@ -187,6 +176,7 @@ unsafe fn calculate_luminance_raw_avx2(rgb_ptr: *const u8, pixel_count: usize) -
 }
 
 #[cfg(target_arch = "aarch64")]
+#[allow(dead_code)]
 unsafe fn calculate_luminance_raw_neon(rgb_ptr: *const u8, pixel_count: usize) -> f64 {
     use std::arch::aarch64::*;
 

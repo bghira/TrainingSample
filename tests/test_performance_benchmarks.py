@@ -1,6 +1,7 @@
 """Enhanced performance benchmarks and stress tests for training_sample_rust."""
 
 import gc
+import importlib.util
 import threading
 import time
 
@@ -21,7 +22,7 @@ try:
 except ImportError:
     HAS_OPENCV = False
 
-HAS_BENCHMARK = True
+HAS_BENCHMARK = importlib.util.find_spec("pytest_benchmark") is not None
 
 pytestmark = pytest.mark.skipif(
     not HAS_BINDINGS, reason="Python bindings not available"

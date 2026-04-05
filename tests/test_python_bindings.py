@@ -1,5 +1,7 @@
 """Tests for Python bindings of training_sample_rust."""
 
+import importlib.util
+
 import numpy as np
 import pytest
 
@@ -10,7 +12,7 @@ try:
 except ImportError:
     HAS_BINDINGS = False
 
-HAS_BENCHMARK = True
+HAS_BENCHMARK = importlib.util.find_spec("pytest_benchmark") is not None
 
 pytestmark = pytest.mark.skipif(
     not HAS_BINDINGS, reason="Python bindings not available"
@@ -92,6 +94,67 @@ class TestVideoOperations:
 
         assert len(results) == 1
         assert results[0].shape == (10, 64, 64, 3)
+
+
+class TestZeroCopyBindings:
+    """Test zero-copy binding behavior and safety checks."""
+
+    def test_zero_copy_luminance_matches_standard_path(self):
+        """Zero-copy luminance should match the standard implementation."""
+        image = np.random.randint(0, 255, (512, 512, 3), dtype=np.uint8)
+
+        expected = tsr.batch_calculate_luminance([image])[0]
+        actual = tsr.batch_calculate_luminance_zero_copy([image])[0]
+
+        assert actual == pytest.approx(expected, abs=1e-6)
+
+    def test_zero_copy_luminance_accepts_non_contiguous_views(self):
+        """Zero-copy luminance should handle strided arrays safely."""
+        image = np.random.randint(0, 255, (256, 256, 3), dtype=np.uint8)
+        strided = image[:, ::2, :]
+
+        expected = tsr.batch_calculate_luminance([strided])[0]
+        actual = tsr.batch_calculate_luminance_zero_copy([strided])[0]
+
+        assert actual == pytest.approx(expected, abs=1e-6)
+
+    def test_zero_copy_crop_rejects_non_contiguous_array(self):
+        """Unsafe zero-copy crop path should reject non-contiguous input."""
+        image = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+        strided = image[:, ::2, :]
+
+        with pytest.raises(ValueError, match="C-contiguous"):
+            tsr.batch_crop_images_zero_copy([strided], [(0, 0, 16, 16)])
+
+    def test_zero_copy_center_crop_rejects_non_contiguous_array(self):
+        """Unsafe zero-copy center crop path should reject non-contiguous input."""
+        image = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+        strided = image[::2, :, :]
+
+        with pytest.raises(ValueError, match="C-contiguous"):
+            tsr.batch_center_crop_images_zero_copy([strided], [(16, 16)])
+
+    def test_zero_copy_resize_rejects_non_contiguous_array(self):
+        """Unsafe zero-copy resize path should reject non-contiguous input."""
+        if not hasattr(tsr, "batch_resize_images_zero_copy"):
+            pytest.skip("OpenCV zero-copy resize bindings not available")
+
+        image = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+        strided = image[:, ::2, :]
+
+        with pytest.raises(ValueError, match="C-contiguous"):
+            tsr.batch_resize_images_zero_copy(strided, (16, 16))
+
+    def test_zero_copy_resize_iterator_rejects_non_contiguous_array(self):
+        """Unsafe zero-copy iterator resize path should reject non-contiguous input."""
+        if not hasattr(tsr, "batch_resize_images_iterator"):
+            pytest.skip("OpenCV resize iterator bindings not available")
+
+        image = np.random.randint(0, 255, (64, 64, 3), dtype=np.uint8)
+        strided = image[:, ::2, :]
+
+        with pytest.raises(ValueError, match="C-contiguous"):
+            tsr.batch_resize_images_iterator([strided], [(16, 16)])
 
 
 class TestErrorHandling:
