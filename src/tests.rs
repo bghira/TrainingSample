@@ -137,6 +137,30 @@ mod luminance_tests {
         // Pure black should have zero luminance
         assert!((luminance - 0.0).abs() < 1.0);
     }
+
+    #[test]
+    fn test_raw_buffer_luminance_matches_scalar_for_large_image() {
+        let img = Array3::from_shape_fn((512, 512, 3), |(y, x, c)| ((x + y + c * 17) % 256) as u8);
+        let expected = calculate_luminance_scalar(&img.view());
+        let actual = unsafe {
+            calculate_luminance_raw_buffer(img.as_ptr(), img.dim().1, img.dim().0, img.dim().2)
+        };
+
+        assert!((actual - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn test_raw_buffer_luminance_zero_sized_image_returns_zero() {
+        let luminance = unsafe { calculate_luminance_raw_buffer(std::ptr::null(), 0, 0, 3) };
+        assert_eq!(luminance, 0.0);
+    }
+
+    #[test]
+    fn test_raw_buffer_luminance_non_rgb_returns_zero() {
+        let data = [42u8; 16];
+        let luminance = unsafe { calculate_luminance_raw_buffer(data.as_ptr(), 2, 2, 1) };
+        assert_eq!(luminance, 0.0);
+    }
 }
 
 #[cfg(test)]

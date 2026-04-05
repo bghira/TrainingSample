@@ -36,6 +36,18 @@ fn get_buffer_pool() -> &'static Arc<Mutex<BufferPool>> {
 }
 
 #[cfg(feature = "python-bindings")]
+fn ensure_c_contiguous(image: &ndarray::ArrayView3<'_, u8>, operation: &str) -> PyResult<()> {
+    if image.as_slice().is_none() {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "{} requires a C-contiguous array",
+            operation
+        )));
+    }
+
+    Ok(())
+}
+
+#[cfg(feature = "python-bindings")]
 struct BufferPool {
     pools: std::collections::HashMap<(usize, usize, usize), VecDeque<Vec<u8>>>,
 }
@@ -120,6 +132,7 @@ pub unsafe fn batch_crop_images_zero_copy<'py>(
 
     for (image, &(x, y, width, height)) in images.iter().zip(crop_boxes.iter()) {
         let img_view = image.as_array();
+        ensure_c_contiguous(&img_view, "batch_crop_images_zero_copy")?;
         let (src_height, src_width, channels) = img_view.dim();
 
         if x + width > src_width || y + height > src_height {
@@ -168,6 +181,7 @@ pub unsafe fn batch_center_crop_images_zero_copy<'py>(
 
     for (image, &(target_width, target_height)) in images.iter().zip(target_sizes.iter()) {
         let img_view = image.as_array();
+        ensure_c_contiguous(&img_view, "batch_center_crop_images_zero_copy")?;
         let (src_height, src_width, channels) = img_view.dim();
 
         let start_x = (src_width.saturating_sub(target_width)) / 2;
@@ -204,49 +218,13 @@ pub unsafe fn batch_center_crop_images_zero_copy<'py>(
 pub fn batch_calculate_luminance_zero_copy(
     images: Vec<PyReadonlyArray3<u8>>,
 ) -> PyResult<Vec<f64>> {
-    use rayon::prelude::*;
-
-    // Extract raw pointers and dimensions first (on main thread)
-    #[derive(Clone, Copy)]
-    struct ImageData {
-        ptr: *const u8,
-        width: usize,
-        height: usize,
-        channels: usize,
-    }
-
-    unsafe impl Send for ImageData {}
-    unsafe impl Sync for ImageData {}
-
-    let image_data: Vec<ImageData> = images
+    images
         .iter()
         .map(|image| {
             let img_view = image.as_array();
-            let (height, width, channels) = img_view.dim();
-            let ptr = img_view.as_ptr();
-            ImageData {
-                ptr,
-                width,
-                height,
-                channels,
-            }
+            Ok(crate::luminance::calculate_luminance_array(&img_view))
         })
-        .collect();
-
-    // Now process the raw pointers in parallel
-    let luminances: Vec<f64> = image_data
-        .par_iter()
-        .map(|data| unsafe {
-            crate::luminance::calculate_luminance_raw_buffer(
-                data.ptr,
-                data.width,
-                data.height,
-                data.channels,
-            )
-        })
-        .collect();
-
-    Ok(luminances)
+        .collect()
 }
 
 #[cfg(all(feature = "python-bindings", feature = "opencv"))]
@@ -326,18 +304,19 @@ pub fn batch_resize_images_zero_copy<'py>(
         .zip(sizes_vec.iter())
         .map(|(image, &(target_width, target_height))| {
             let img_view = image.as_array();
+            ensure_c_contiguous(&img_view, "batch_resize_images_zero_copy")?;
             let (src_height, src_width, src_channels) = img_view.dim();
             let src_ptr = img_view.as_ptr();
-            ResizeData {
+            Ok(ResizeData {
                 src_ptr,
                 src_height,
                 src_width,
                 src_channels,
                 target_width,
                 target_height,
-            }
+            })
         })
-        .collect();
+        .collect::<PyResult<_>>()?;
 
     // Adaptive processing: use parallel only for larger batches to avoid threading overhead
     let use_parallel = batch_size >= 8; // Threshold where parallel processing becomes beneficial
@@ -506,6 +485,7 @@ fn resize_single_image_direct<'py>(
     };
 
     let img_view = image.as_array();
+    ensure_c_contiguous(&img_view, "batch_resize_images_zero_copy")?;
     let (src_height, src_width, channels) = img_view.dim();
     let (target_width, target_height) = target_size;
 
@@ -722,18 +702,19 @@ pub fn batch_resize_images_iterator<'py>(
         .zip(target_sizes.iter())
         .map(|(image, &(target_width, target_height))| {
             let img_view = image.as_array();
+            ensure_c_contiguous(&img_view, "batch_resize_images_iterator")?;
             let (src_height, src_width, src_channels) = img_view.dim();
             let src_ptr = img_view.as_ptr();
-            ResizeData {
+            Ok(ResizeData {
                 src_ptr,
                 src_height,
                 src_width,
                 src_channels,
                 target_width,
                 target_height,
-            }
+            })
         })
-        .collect();
+        .collect::<PyResult<_>>()?;
 
     // Adaptive processing: use parallel only for larger batches
     let use_parallel = batch_size >= 8;
