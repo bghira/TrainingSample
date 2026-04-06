@@ -230,7 +230,7 @@ pub mod cvtcolor {
         let h = if delta == 0.0 {
             0.0
         } else if max == r {
-            60.0 * (((g - b) / delta) % 6.0)
+            60.0 * (((g - b) / delta).rem_euclid(6.0))
         } else if max == g {
             60.0 * ((b - r) / delta + 2.0)
         } else {

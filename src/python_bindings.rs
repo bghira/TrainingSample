@@ -952,17 +952,20 @@ pub fn batch_random_crop_images<'py>(
 
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-pub fn batch_calculate_luminance(images: Vec<PyReadonlyArray3<u8>>) -> PyResult<Vec<f64>> {
-    // Keep original sequential implementation for fair comparison
-    let mut luminances = Vec::with_capacity(images.len());
+pub fn batch_calculate_luminance(
+    py: Python<'_>,
+    images: Vec<PyReadonlyArray3<u8>>,
+) -> PyResult<Vec<f64>> {
+    use rayon::prelude::*;
 
-    for image in images.iter() {
-        let img_view = image.as_array();
-        let luminance = crate::luminance::calculate_luminance_array(&img_view);
-        luminances.push(luminance);
-    }
+    let image_views: Vec<_> = images.iter().map(|image| image.as_array()).collect();
 
-    Ok(luminances)
+    Ok(py.allow_threads(|| {
+        image_views
+            .par_iter()
+            .map(crate::luminance::calculate_luminance_array_sequential)
+            .collect()
+    }))
 }
 
 // TSR FORMAT CONVERSION OPERATIONS (BENCHMARK WINNERS)

@@ -332,8 +332,9 @@ mod edge_case_tests {
 
 #[cfg(test)]
 mod cv_compat_tests {
-    use crate::cv_compat::{imdecode, ImreadFlags};
+    use crate::cv_compat::{cvt_color, imdecode, ColorConversionCode, ImreadFlags};
     use image::{DynamicImage, ImageBuffer, ImageFormat, Luma, LumaA, Rgb, Rgba};
+    use ndarray::Array3;
     use std::io::Cursor;
 
     #[test]
@@ -420,6 +421,20 @@ mod cv_compat_tests {
         assert_eq!(decoded[[1, 1, 0]], 23);
         assert_eq!(decoded[[1, 1, 1]], 32);
     }
+
+    #[test]
+    fn test_rgb_to_hsv_wraps_negative_red_sector_hues() {
+        let src =
+            Array3::from_shape_vec((1, 1, 3), vec![255, 0, 128]).expect("shape should be valid");
+
+        let hsv = cvt_color(&src.view(), ColorConversionCode::ColorRgb2Hsv).unwrap();
+
+        // This color sits in the red sector with g < b, so hue should wrap near 330 degrees.
+        // OpenCV stores hue in [0, 179], so we expect approximately 165 instead of clamping to 0.
+        assert!(hsv[[0, 0, 0]] >= 160);
+        assert_eq!(hsv[[0, 0, 1]], 255);
+        assert_eq!(hsv[[0, 0, 2]], 255);
+    }
 }
 
 // OpenCV specific tests
@@ -429,7 +444,7 @@ mod opencv_tests {
     use super::*;
 
     #[cfg(feature = "opencv")]
-    use crate::opencv_ops::OpenCVBatchProcessor;
+    use crate::opencv_ops::{resize_bilinear_opencv, resize_lanczos4_opencv, OpenCVBatchProcessor};
 
     #[test]
     #[cfg(feature = "opencv")]
@@ -446,6 +461,40 @@ mod opencv_tests {
         let resized = results.unwrap();
         assert_eq!(resized.len(), 1);
         assert_eq!(resized[0].dim(), (128, 128, 3));
+    }
+
+    #[test]
+    #[cfg(feature = "opencv")]
+    fn test_opencv_resize_interpolation_contract() {
+        let processor = OpenCVBatchProcessor::new();
+        let high_frequency =
+            Array3::from_shape_fn(
+                (4, 4, 3),
+                |(y, x, c)| {
+                    if (x + y + c) % 2 == 0 {
+                        0
+                    } else {
+                        255
+                    }
+                },
+            );
+
+        let bilinear = resize_bilinear_opencv(&high_frequency.view(), 7, 7).unwrap();
+        let lanczos = resize_lanczos4_opencv(&high_frequency.view(), 7, 7).unwrap();
+        assert_ne!(
+            bilinear, lanczos,
+            "bilinear and lanczos paths should use different OpenCV interpolation modes"
+        );
+
+        let batch_linear = processor
+            .batch_resize_images(&[high_frequency.view()], &[(7, 7)])
+            .unwrap();
+        let batch_lanczos = processor
+            .batch_resize_lanczos4(&[high_frequency.view()], &[(7, 7)])
+            .unwrap();
+
+        assert_eq!(batch_linear[0], bilinear);
+        assert_eq!(batch_lanczos[0], lanczos);
     }
 
     #[test]
