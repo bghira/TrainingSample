@@ -330,6 +330,59 @@ mod edge_case_tests {
     }
 }
 
+#[cfg(test)]
+mod cv_compat_tests {
+    use crate::cv_compat::{imdecode, ImreadFlags};
+    use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
+    use std::io::Cursor;
+
+    #[test]
+    fn test_imdecode_detects_jpeg_without_png_hint() {
+        let mut encoded = Cursor::new(Vec::new());
+        let rgb = ImageBuffer::from_fn(3, 2, |x, y| Rgb([(x * 40) as u8, (y * 80) as u8, 200]));
+
+        DynamicImage::ImageRgb8(rgb)
+            .write_to(&mut encoded, ImageFormat::Jpeg)
+            .unwrap();
+
+        let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadColor).unwrap();
+        assert_eq!(decoded.dim(), (2, 3, 3));
+    }
+
+    #[test]
+    fn test_imdecode_detects_webp_without_png_hint() {
+        let mut encoded = Cursor::new(Vec::new());
+        let rgb = ImageBuffer::from_fn(4, 3, |x, y| Rgb([(x * 20) as u8, 100, (y * 30) as u8]));
+
+        DynamicImage::ImageRgb8(rgb)
+            .write_to(&mut encoded, ImageFormat::WebP)
+            .unwrap();
+
+        let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadColor).unwrap();
+        assert_eq!(decoded.dim(), (3, 4, 3));
+    }
+
+    #[test]
+    fn test_imdecode_unchanged_preserves_alpha() {
+        let mut encoded = Cursor::new(Vec::new());
+        let rgba = ImageBuffer::from_fn(2, 2, |x, y| {
+            let alpha = if (x + y) % 2 == 0 { 64 } else { 255 };
+            Rgba([10 + x as u8, 20 + y as u8, 30, alpha])
+        });
+
+        DynamicImage::ImageRgba8(rgba)
+            .write_to(&mut encoded, ImageFormat::Png)
+            .unwrap();
+
+        let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadUnchanged).unwrap();
+        assert_eq!(decoded.dim(), (2, 2, 4));
+        assert_eq!(decoded[[0, 0, 3]], 64);
+        assert_eq!(decoded[[0, 1, 3]], 255);
+        assert_eq!(decoded[[1, 0, 3]], 255);
+        assert_eq!(decoded[[1, 1, 3]], 64);
+    }
+}
+
 // OpenCV specific tests
 #[cfg(test)]
 mod opencv_tests {
