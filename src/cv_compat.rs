@@ -26,9 +26,7 @@ pub mod imdecode {
         match flags {
             ImreadFlags::ImreadGrayscale => {
                 let gray_img = img.to_luma8();
-                let (width, height) = gray_img.dimensions();
-                Array3::from_shape_vec((height as usize, width as usize, 1), gray_img.into_raw())
-                    .map_err(|e| anyhow::anyhow!("Failed to reshape grayscale image: {}", e))
+                luma8_to_rgb_ndarray(gray_img)
             }
             ImreadFlags::ImreadColor => {
                 let rgb_img = img.to_rgb8();
@@ -71,6 +69,19 @@ pub mod imdecode {
             }
             channels => anyhow::bail!("Unsupported decoded image channel count: {}", channels),
         }
+    }
+
+    fn luma8_to_rgb_ndarray(gray_img: image::GrayImage) -> Result<Array3<u8>> {
+        let (width, height) = gray_img.dimensions();
+        let gray_raw = gray_img.into_raw();
+        let mut rgb_data = Vec::with_capacity(gray_raw.len() * 3);
+
+        for gray in gray_raw {
+            rgb_data.extend_from_slice(&[gray, gray, gray]);
+        }
+
+        Array3::from_shape_vec((height as usize, width as usize, 3), rgb_data)
+            .map_err(|e| anyhow::anyhow!("Failed to reshape grayscale image: {}", e))
     }
 }
 

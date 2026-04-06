@@ -333,7 +333,7 @@ mod edge_case_tests {
 #[cfg(test)]
 mod cv_compat_tests {
     use crate::cv_compat::{imdecode, ImreadFlags};
-    use image::{DynamicImage, ImageBuffer, ImageFormat, Rgb, Rgba};
+    use image::{DynamicImage, ImageBuffer, ImageFormat, Luma, LumaA, Rgb, Rgba};
     use std::io::Cursor;
 
     #[test]
@@ -380,6 +380,45 @@ mod cv_compat_tests {
         assert_eq!(decoded[[0, 1, 3]], 255);
         assert_eq!(decoded[[1, 0, 3]], 255);
         assert_eq!(decoded[[1, 1, 3]], 64);
+    }
+
+    #[test]
+    fn test_imdecode_grayscale_returns_compat_rgb_shape() {
+        let mut encoded = Cursor::new(Vec::new());
+        let gray = ImageBuffer::from_fn(2, 2, |x, y| Luma([10 + (x + y * 2) as u8]));
+
+        DynamicImage::ImageLuma8(gray)
+            .write_to(&mut encoded, ImageFormat::Png)
+            .unwrap();
+
+        let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadGrayscale).unwrap();
+        assert_eq!(decoded.dim(), (2, 2, 3));
+        assert_eq!(decoded[[0, 0, 0]], decoded[[0, 0, 1]]);
+        assert_eq!(decoded[[0, 0, 1]], decoded[[0, 0, 2]]);
+        assert_eq!(decoded[[1, 1, 0]], 13);
+    }
+
+    #[test]
+    fn test_imdecode_unchanged_preserves_luma_alpha_channels() {
+        let mut encoded = Cursor::new(Vec::new());
+        let gray_alpha = ImageBuffer::from_fn(2, 2, |x, y| {
+            let luma = 20 + (x + y * 2) as u8;
+            let alpha = if (x + y) % 2 == 0 { 32 } else { 200 };
+            LumaA([luma, alpha])
+        });
+
+        DynamicImage::ImageLumaA8(gray_alpha)
+            .write_to(&mut encoded, ImageFormat::Png)
+            .unwrap();
+
+        let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadUnchanged).unwrap();
+        assert_eq!(decoded.dim(), (2, 2, 2));
+        assert_eq!(decoded[[0, 0, 0]], 20);
+        assert_eq!(decoded[[0, 0, 1]], 32);
+        assert_eq!(decoded[[0, 1, 0]], 21);
+        assert_eq!(decoded[[0, 1, 1]], 200);
+        assert_eq!(decoded[[1, 1, 0]], 23);
+        assert_eq!(decoded[[1, 1, 1]], 32);
     }
 }
 
