@@ -4,7 +4,7 @@ use ndarray::{Array3, ArrayView3};
 #[cfg(feature = "opencv")]
 use opencv::{
     core::{AlgorithmHint, Mat},
-    imgproc::{cvt_color, resize, COLOR_RGB2GRAY, INTER_LANCZOS4},
+    imgproc::{cvt_color, resize, COLOR_RGB2GRAY, INTER_LANCZOS4, INTER_LINEAR},
     prelude::*,
 };
 
@@ -31,6 +31,15 @@ impl OpenCVBatchProcessor {
         images: &[ArrayView3<u8>],
         target_sizes: &[(u32, u32)], // (width, height)
     ) -> Result<Vec<Array3<u8>>> {
+        self.batch_resize_images_with_interpolation(images, target_sizes, INTER_LINEAR)
+    }
+
+    fn batch_resize_images_with_interpolation(
+        &self,
+        images: &[ArrayView3<u8>],
+        target_sizes: &[(u32, u32)], // (width, height)
+        interpolation: i32,
+    ) -> Result<Vec<Array3<u8>>> {
         if images.len() != target_sizes.len() {
             anyhow::bail!("Number of images and target sizes must match");
         }
@@ -39,7 +48,7 @@ impl OpenCVBatchProcessor {
             .iter()
             .zip(target_sizes.iter())
             .map(|(image, &(target_width, target_height))| {
-                self.resize_single_opencv(image, target_width, target_height)
+                self.resize_single_opencv(image, target_width, target_height, interpolation)
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -111,8 +120,7 @@ impl OpenCVBatchProcessor {
         images: &[ArrayView3<u8>],
         target_sizes: &[(u32, u32)], // (width, height)
     ) -> Result<Vec<Array3<u8>>> {
-        // Use the same implementation as batch_resize_images but with Lanczos4
-        self.batch_resize_images(images, target_sizes)
+        self.batch_resize_images_with_interpolation(images, target_sizes, INTER_LANCZOS4)
     }
 
     /// Single image resize using OpenCV
@@ -121,6 +129,7 @@ impl OpenCVBatchProcessor {
         image: &ArrayView3<u8>,
         target_width: u32,
         target_height: u32,
+        interpolation: i32,
     ) -> Result<Array3<u8>> {
         let (_height, _width, channels) = image.dim();
 
@@ -139,7 +148,7 @@ impl OpenCVBatchProcessor {
             opencv::core::Size::new(target_width as i32, target_height as i32),
             0.0,
             0.0,
-            INTER_LANCZOS4,
+            interpolation,
         )?;
 
         // Convert back to ndarray
@@ -243,7 +252,7 @@ pub fn resize_bilinear_opencv(
     target_height: u32,
 ) -> Result<Array3<u8>> {
     let processor = OpenCVBatchProcessor::new();
-    processor.resize_single_opencv(image, target_width, target_height)
+    processor.resize_single_opencv(image, target_width, target_height, INTER_LINEAR)
 }
 
 #[cfg(feature = "opencv")]
@@ -253,7 +262,7 @@ pub fn resize_lanczos4_opencv(
     target_height: u32,
 ) -> Result<Array3<u8>> {
     let processor = OpenCVBatchProcessor::new();
-    processor.resize_single_opencv(image, target_width, target_height)
+    processor.resize_single_opencv(image, target_width, target_height, INTER_LANCZOS4)
 }
 
 #[cfg(not(feature = "opencv"))]
