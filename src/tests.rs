@@ -330,6 +330,26 @@ mod edge_case_tests {
     }
 }
 
+#[cfg(test)]
+mod cv_compat_tests {
+    use crate::cv_compat::{cvt_color, ColorConversionCode};
+    use ndarray::Array3;
+
+    #[test]
+    fn test_rgb_to_hsv_wraps_negative_red_sector_hues() {
+        let src =
+            Array3::from_shape_vec((1, 1, 3), vec![255, 0, 128]).expect("shape should be valid");
+
+        let hsv = cvt_color(&src.view(), ColorConversionCode::ColorRgb2Hsv).unwrap();
+
+        // This color sits in the red sector with g < b, so hue should wrap near 330 degrees.
+        // OpenCV stores hue in [0, 179], so we expect approximately 165 instead of clamping to 0.
+        assert!(hsv[[0, 0, 0]] >= 160);
+        assert_eq!(hsv[[0, 0, 1]], 255);
+        assert_eq!(hsv[[0, 0, 2]], 255);
+    }
+}
+
 // OpenCV specific tests
 #[cfg(test)]
 mod opencv_tests {
