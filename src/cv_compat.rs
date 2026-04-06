@@ -4,8 +4,7 @@ use ndarray::{Array3, ArrayView3};
 /// OpenCV-compatible image decoding functionality
 pub mod imdecode {
     use super::*;
-    use image::ImageFormat;
-    use std::io::Cursor;
+    use image::DynamicImage;
 
     /// Image read flags matching OpenCV constants
     #[derive(Debug, Clone, Copy)]
@@ -21,47 +20,68 @@ pub mod imdecode {
 
     /// Decode image from byte buffer (equivalent to cv2.imdecode)
     pub fn imdecode(buf: &[u8], flags: ImreadFlags) -> Result<Array3<u8>> {
-        let cursor = Cursor::new(buf);
-        let img = image::load(
-            cursor,
-            ImageFormat::from_extension("").unwrap_or(ImageFormat::Png),
-        )
-        .map_err(|e| anyhow::anyhow!("Failed to decode image: {}", e))?;
+        let img = image::load_from_memory(buf)
+            .map_err(|e| anyhow::anyhow!("Failed to decode image: {}", e))?;
 
         match flags {
             ImreadFlags::ImreadGrayscale => {
                 let gray_img = img.to_luma8();
-                let (width, height) = gray_img.dimensions();
-
-                // Convert to 3-channel grayscale (RGB format)
-                let mut rgb_data = Array3::<u8>::zeros((height as usize, width as usize, 3));
-                for y in 0..height {
-                    for x in 0..width {
-                        let pixel = gray_img.get_pixel(x, y);
-                        let gray_val = pixel[0];
-                        rgb_data[[y as usize, x as usize, 0]] = gray_val;
-                        rgb_data[[y as usize, x as usize, 1]] = gray_val;
-                        rgb_data[[y as usize, x as usize, 2]] = gray_val;
-                    }
-                }
-                Ok(rgb_data)
+                luma8_to_rgb_ndarray(gray_img)
             }
-            ImreadFlags::ImreadColor | ImreadFlags::ImreadUnchanged => {
+            ImreadFlags::ImreadColor => {
                 let rgb_img = img.to_rgb8();
                 let (width, height) = rgb_img.dimensions();
-
-                let mut rgb_data = Array3::<u8>::zeros((height as usize, width as usize, 3));
-                for y in 0..height {
-                    for x in 0..width {
-                        let pixel = rgb_img.get_pixel(x, y);
-                        rgb_data[[y as usize, x as usize, 0]] = pixel[0];
-                        rgb_data[[y as usize, x as usize, 1]] = pixel[1];
-                        rgb_data[[y as usize, x as usize, 2]] = pixel[2];
-                    }
-                }
-                Ok(rgb_data)
+                Array3::from_shape_vec((height as usize, width as usize, 3), rgb_img.into_raw())
+                    .map_err(|e| anyhow::anyhow!("Failed to reshape RGB image: {}", e))
             }
+            ImreadFlags::ImreadUnchanged => dynamic_image_to_ndarray(img),
         }
+    }
+
+    fn dynamic_image_to_ndarray(img: DynamicImage) -> Result<Array3<u8>> {
+        match img.color().channel_count() {
+            1 => {
+                let gray_img = img.to_luma8();
+                let (width, height) = gray_img.dimensions();
+                Array3::from_shape_vec((height as usize, width as usize, 1), gray_img.into_raw())
+                    .map_err(|e| anyhow::anyhow!("Failed to reshape grayscale image: {}", e))
+            }
+            2 => {
+                let gray_alpha_img = img.to_luma_alpha8();
+                let (width, height) = gray_alpha_img.dimensions();
+                Array3::from_shape_vec(
+                    (height as usize, width as usize, 2),
+                    gray_alpha_img.into_raw(),
+                )
+                .map_err(|e| anyhow::anyhow!("Failed to reshape grayscale+alpha image: {}", e))
+            }
+            3 => {
+                let rgb_img = img.to_rgb8();
+                let (width, height) = rgb_img.dimensions();
+                Array3::from_shape_vec((height as usize, width as usize, 3), rgb_img.into_raw())
+                    .map_err(|e| anyhow::anyhow!("Failed to reshape RGB image: {}", e))
+            }
+            4 => {
+                let rgba_img = img.to_rgba8();
+                let (width, height) = rgba_img.dimensions();
+                Array3::from_shape_vec((height as usize, width as usize, 4), rgba_img.into_raw())
+                    .map_err(|e| anyhow::anyhow!("Failed to reshape RGBA image: {}", e))
+            }
+            channels => anyhow::bail!("Unsupported decoded image channel count: {}", channels),
+        }
+    }
+
+    fn luma8_to_rgb_ndarray(gray_img: image::GrayImage) -> Result<Array3<u8>> {
+        let (width, height) = gray_img.dimensions();
+        let gray_raw = gray_img.into_raw();
+        let mut rgb_data = Vec::with_capacity(gray_raw.len() * 3);
+
+        for gray in gray_raw {
+            rgb_data.extend_from_slice(&[gray, gray, gray]);
+        }
+
+        Array3::from_shape_vec((height as usize, width as usize, 3), rgb_data)
+            .map_err(|e| anyhow::anyhow!("Failed to reshape grayscale image: {}", e))
     }
 }
 
