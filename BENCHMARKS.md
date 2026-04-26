@@ -1,112 +1,137 @@
-# Competitive Performance Benchmarks
+# Performance Benchmarks
 
-This library includes comprehensive benchmarks against industry-standard libraries (OpenCV, NumPy) to ensure competitive performance for real-world SFT (Supervised Fine-Tuning) workloads.
-
-## Benchmark Categories
-
-### 🖼️ High-Resolution Image Processing
-
-**Target Workload**: 5120×5120 → 1024×1024 image processing pipeline
-- **Input**: 5120×5120×3 images (26.2M pixels, ~78MB each)
-- **Pipeline**: Center crop → Resize → Luminance calculation
-- **Batch sizes**: 2-4 images (memory constrained)
-
-### 📊 Performance Targets
-
-| Operation | Input Size | Target Performance | Baseline |
-|-----------|------------|-------------------|----------|
-| **Resize** | 5120×5120 → 1024×1024 | Match OpenCV bilinear | `cv2.resize()` |
-| **Center Crop** | 5120×5120 → 2048×2048 | Match/exceed NumPy | Array slicing |
-| **Luminance** | 1024×1024 | 1.5x+ faster than NumPy | Vectorized math |
-| **Full Pipeline** | 5120×5120 → 1024×1024 | >0.5 images/sec | Combined ops |
-
-### 🎯 Quality Targets
-
-- **Resize Quality**: PSNR >30dB vs OpenCV (excellent similarity)
-- **Crop Accuracy**: Bit-exact match with NumPy center crop
-- **Luminance Precision**: <0.1 difference vs NumPy reference
+TrainingSample includes benchmarks for common preprocessing operations: crop, resize, luminance, resize-plus-luminance pipelines, and video frame resizing. The benchmarks are meant to catch regressions and provide workload-specific guidance, not to guarantee universal speedups over OpenCV or NumPy.
 
 ## Running Benchmarks
 
-### Local Development
+Use the repository virtual environment when available:
+
 ```bash
-# Install dependencies
-pip install opencv-python pytest-benchmark psutil
-
-# Build with optimizations
-maturin develop --release --features "python-bindings,simd"
-
-# Run competitive benchmarks
-./scripts/run_competitive_benchmarks.sh
+.venv/bin/python -m pytest tests/test_performance_benchmarks.py -q -s
 ```
 
-### CI/CD Integration
+To run every Python test and benchmark marker in the repo:
 
-Benchmarks run automatically in CI for:
-- **Pull requests**: Performance regression detection
-- **Main branch**: Performance tracking over time
-- **Weekly schedule**: Long-term performance monitoring
+```bash
+.venv/bin/python -m pytest -q
+```
 
-## Benchmark Architecture
+For a fresh source build before measuring:
 
-### Memory Efficiency
-- Monitors RSS memory usage vs OpenCV
-- Tests batch processing memory scaling
-- Validates no memory leaks in pipelines
+```bash
+env -u OPENCV_LINK_LIBS -u OPENCV_LINK_PATHS -u OPENCV_INCLUDE_PATHS \
+    -u LIBCLANG_PATH -u LLVM_CONFIG_PATH \
+    .venv/bin/maturin develop --release
+```
 
-### SIMD Optimization Validation
-- Compares SIMD-enabled vs scalar fallback performance
-- Tests x86-64 AVX2/AVX-512 and ARM64 NEON paths
-- Validates CPU feature detection accuracy
+The OpenCV Rust binding needs a discoverable OpenCV and Clang installation. On this development host, stale macOS-style OpenCV and LLVM environment variables had to be unset before the build could probe the system OpenCV installation.
 
-### Real-World Scenarios
-- **SFT Data Processing**: High-res → training resolution pipeline
-- **Batch Processing**: Multiple images with different operations
-- **Memory Constraints**: Large images with limited RAM
+## Current Local Snapshot
 
-## Performance Philosophy
+Last measured command:
 
-### Why These Benchmarks Matter
+```bash
+.venv/bin/python -m pytest tests/test_performance_benchmarks.py -q -s
+```
 
-1. **Real-World Relevance**: SFT workloads use 5120×5120+ images, not toy 224×224
-2. **Competitive Pressure**: OpenCV and NumPy are highly optimized incumbents
-3. **User Experience**: Poor performance = adoption barriers
-4. **Resource Efficiency**: Training infrastructure costs scale with throughput
+Environment:
 
-### Performance vs Quality Tradeoffs
+- Linux x86_64
+- CPython 3.13
+- NumPy 2.3.4
+- system OpenCV 4.11 via the Rust `opencv` crate
+- release build installed with `maturin develop --release`
 
-- **Resize**: Bilinear interpolation for speed, good quality balance
-- **SIMD**: Aggressive optimization while maintaining numerical accuracy
-- **Memory**: Batch processing for throughput vs memory pressure balance
+Point-in-time scenario timings from the benchmark output:
+
+| Scenario | Before optimization | After optimization | Comparison after optimization |
+|----------|---------------------|--------------------|-------------------------------|
+| Crop batch, 16 images | 22.9 ms | 0.4 ms | NumPy slicing was still faster because it returns views |
+| Mixed-shape crop, 8 images | 50.2 ms | 3.3 ms | NumPy slicing loop was near-zero because it returns views |
+| Resize, 4 mixed-size images | 4.1 ms | 0.4 ms | OpenCV loop: 2.6 ms |
+| Luminance, 4 mixed-size images | 10.4 ms | 0.6 ms | OpenCV loop: 0.9 ms |
+| Resize + luminance pipeline, 4 images | 5.9 ms | 0.6 ms | OpenCV loop: 2.1 ms |
+| Mixed-shape luminance, 6 images | 78.3 ms | 3.3 ms | NumPy loop: 19.4 ms |
+
+Pytest-benchmark means from the same focused run:
+
+| Benchmark | Mean |
+|-----------|------|
+| Center crop | 55.2 us |
+| Resize operations | 353.1 us |
+| Luminance calculation | 417.2 us |
+| Crop operations | 583.8 us |
+| Pipeline | 3.44 ms |
+| Video processing | 2.85 ms |
+
+A full `pytest -q` run also passed and produced similar benchmark ordering, with normal run-to-run variance.
+
+## What Changed in the Latest Optimization
+
+- Owned Rust `ndarray` outputs are transferred into NumPy with `from_owned_array_bound`, avoiding an additional copy in Python-facing result conversion.
+- Contiguous luminance inputs use a channel-sum fast path. Instead of computing weighted luminance per pixel, it sums R, G, and B separately and applies the weights once at the end.
+- Non-contiguous arrays still use the general ndarray path for correctness.
+
+## Benchmark Categories
+
+### Image Operations
+
+- `batch_crop_images`
+- `batch_center_crop_images`
+- `batch_random_crop_images`
+- `batch_resize_images`
+- `batch_calculate_luminance`
+
+### Pipeline Operations
+
+- resize followed by luminance
+- crop followed by resize
+- mixed input sizes and output sizes
+
+### Video Operations
+
+- `batch_resize_videos` with frame batches shaped `(T, H, W, 3)`
 
 ## Interpreting Results
 
-### Good Performance Indicators
-- ✅ Resize: 1-2 images/sec for 5120×5120 → 1024×1024
-- ✅ Crop: 10+ images/sec for 5120×5120 → 2048×2048
-- ✅ Luminance: 1.5x+ faster than NumPy with SIMD
-- ✅ Pipeline: >0.5 complete transformations/sec
+Use these benchmarks to answer practical questions:
 
-### Red Flags
-- ❌ Slower than OpenCV resize (indicates poor SIMD utilization)
-- ❌ Slower than NumPy crop (indicates unnecessary overhead)
-- ❌ Memory usage >2x OpenCV (indicates memory leaks/inefficiency)
-- ❌ Quality degradation (PSNR <30dB vs reference)
+- Is a change adding extra Rust-to-NumPy copies?
+- Are contiguous arrays staying on the fast path?
+- Is resize dominated by OpenCV work or Python binding overhead?
+- Does a mixed-shape batch still behave reasonably?
+- Is a video processing change accidentally introducing per-frame Python overhead?
 
-## Future Enhancements
+Some comparisons need context:
 
-### Planned Improvements
-- GPU acceleration benchmarks (Metal/CUDA)
-- More interpolation methods (bicubic, lanczos)
-- Video processing pipeline benchmarks
-- Multi-threaded batch processing optimization
+- NumPy crop by slicing often returns a view, so it can be much faster than any function that returns owned cropped arrays.
+- Very small images can be dominated by Python call overhead.
+- Large images can be dominated by memory bandwidth rather than arithmetic.
+- OpenCV performance varies by build options, CPU features, and linked libraries.
 
-### Performance Tracking
-- Historical performance database
-- Regression detection and alerting
-- Performance comparison across different hardware configurations
-- Automated performance optimization recommendations
+## Quality Checks
 
----
+The tests validate basic output behavior alongside timing:
 
-**Goal**: Be the fastest, highest-quality image processing library for ML/SFT workloads while maintaining competitive memory usage and numerical accuracy.
+- Crop outputs have expected shape and match NumPy slicing where ownership differences do not matter.
+- Resize outputs have expected shape and are close to OpenCV output for the configured interpolation.
+- Luminance stays within a small tolerance of NumPy/OpenCV-style references.
+- Non-contiguous arrays are accepted by safe luminance paths and rejected by strict zero-copy crop/resize paths.
+
+## Regression Signals
+
+Investigate if a change causes:
+
+- Public batch crop to return to multi-millisecond timings for small batches.
+- Luminance on contiguous RGB arrays to lose the channel-sum fast path.
+- Resize benchmarks to add large overhead beyond OpenCV work.
+- Video resizing to scale with per-frame Python object churn.
+- Memory usage to grow unexpectedly for repeated batch calls.
+
+## Future Benchmark Work
+
+- Store historical benchmark results by commit and host.
+- Add explicit memory allocation tracking for Python-facing APIs.
+- Separate view-returning crop comparisons from owned-output crop comparisons.
+- Add more video pipeline benchmarks.
+- Document hardware and OpenCV build details in benchmark artifacts.

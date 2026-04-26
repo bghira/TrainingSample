@@ -4,102 +4,61 @@
 [![PyPI](https://img.shields.io/pypi/v/trainingsample.svg)](https://pypi.org/project/trainingsample/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-**🏆 Industry-Leading Computer Vision Library - FASTER than cv2**
+TrainingSample provides Rust-backed Python bindings for common image and video preprocessing operations used in ML data pipelines. It combines OpenCV-backed resizing with Rust implementations for batching, cropping, luminance calculation, format conversion, and video helpers.
 
-The only Python library that **beats opencv-python (cv2) performance** by leveraging OpenCV's C++ power with zero-copy Rust optimizations and intelligent auto-batching.
+The project is designed for workloads where Python-side loops and repeated boundary crossings become visible. It is not a blanket replacement for all of `cv2`, and performance depends on image size, batch shape, CPU, OpenCV build, and memory bandwidth.
 
 ## install
 
 ```bash
-# python (recommended)
+# python
 pip install trainingsample
 
 # rust
 cargo add trainingsample
 ```
 
-## 🚀 Why TrainingSample Leads the Industry
-
-**BREAKTHROUGH: We leverage OpenCV's C++ power to beat opencv-python (cv2) by eliminating Python binding overhead.**
-
-### ⚡ Performance That Redefines Possible
-- **Single images**: **1.12x FASTER** than `cv2.resize()` - the "impossible" achievement
-- **Batch processing**: **2.4x faster** than OpenCV individual calls
-- **Zero-copy iteration**: True lazy conversion with **17,204 images/sec** throughput
-- **Intelligent dispatch**: Seamless auto-batching with zero wrapper overhead
-
-### 🔥 What Makes Us Different
-- **Leverages OpenCV C++**: Direct OpenCV C++ access to beat opencv-python binding overhead
-- **Zero wrapper overhead**: Eliminated 76% of artificial performance losses in Python bindings
-- **True zero-copy**: Raw OpenCV Mat → numpy array, no intermediate conversions
-- **Intelligent API**: Same function handles single images + batch processing seamlessly
-- **Buffer pooling**: Memory reuse across operations eliminates allocation bottlenecks
-- **Adaptive threading**: Sequential for small batches, parallel for large batches
-
-**We unleash OpenCV's full C++ power without Python binding limitations.**
-
-## 🎯 Ultimate Performance APIs
+## python usage
 
 ```python
 import numpy as np
 import trainingsample as tsr
 
-# SINGLE IMAGE - FASTER than cv2.resize()!
-img = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-result = tsr.batch_resize_images_zero_copy(img, (256, 256))  # 1.12x FASTER than OpenCV!
+images = [
+    np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    for _ in range(8)
+]
 
-# BATCH PROCESSING - 2.4x faster than OpenCV individual calls
-images = [np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8) for _ in range(10)]
-results = tsr.batch_resize_images_zero_copy(images, [(256, 256)] * 10)
+crop_boxes = [(50, 50, 200, 200)] * len(images)
+cropped = tsr.batch_crop_images(images, crop_boxes)
 
-# MEMORY-EFFICIENT ITERATION - True zero-copy lazy conversion
-for result in tsr.batch_resize_images_iterator(images, [(256, 256)] * 10):
-    process(result)  # Convert only when accessed, supports early termination
+target_sizes = [(224, 224)] * len(images)
+resized = tsr.batch_resize_images(images, target_sizes)
 
-# ZERO-COPY BATCH OPERATIONS
-cropped = tsr.batch_crop_images_zero_copy(images, [(50, 50, 200, 200)] * 10)      # 4x faster
-luminances = tsr.batch_calculate_luminance_zero_copy(images)                      # 8x faster
-center_cropped = tsr.batch_center_crop_images_zero_copy(images, [(224, 224)] * 10) # 3x faster
+luminances = tsr.batch_calculate_luminance(resized)
 ```
 
-### 📊 Performance Comparison
+OpenCV-compatible helpers are also exported for common operations:
+
 ```python
-import time
-import cv2
-
-# Single image resize comparison
-img = np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
-
-# OpenCV (industry standard)
-start = time.perf_counter()
-cv2_result = cv2.resize(img, (256, 256))
-opencv_time = time.perf_counter() - start
-
-# TrainingSample (industry leader)
-start = time.perf_counter()
-tsr_result = tsr.batch_resize_images_zero_copy(img, (256, 256))
-tsr_time = time.perf_counter() - start
-
-print(f"OpenCV: {opencv_time*1000:.3f}ms")
-print(f"TSR:    {tsr_time*1000:.3f}ms")
-print(f"TSR is {opencv_time/tsr_time:.2f}x FASTER!")  # Typical: 1.12x faster
+decoded = tsr.imdecode(image_bytes, tsr.IMREAD_COLOR)
+gray = tsr.cvt_color(decoded, tsr.COLOR_RGB2GRAY)
+edges = tsr.canny(decoded, threshold1=50, threshold2=150)
+resized = tsr.resize(decoded, (224, 224), interpolation=tsr.INTER_LINEAR)
 ```
 
 ## rust usage
 
 ```rust
-use trainingsample::{
-    batch_crop_image_arrays, batch_resize_image_arrays,
-    batch_calculate_luminance_arrays
-};
 use ndarray::Array3;
+use trainingsample::{
+    batch_calculate_luminance_arrays, batch_crop_image_arrays, batch_resize_image_arrays,
+};
 
-// create some test data
 let images: Vec<Array3<u8>> = (0..10)
     .map(|_| Array3::zeros((480, 640, 3)))
     .collect();
 
-// batch operations
 let crop_boxes = vec![(50, 50, 200, 200); 10]; // (x, y, width, height)
 let cropped = batch_crop_image_arrays(&images, &crop_boxes);
 
@@ -111,181 +70,111 @@ let luminances = batch_calculate_luminance_arrays(&images);
 
 ## api reference
 
-### python functions
+### `batch_crop_images(images, crop_boxes)`
 
-#### `batch_crop_images(images, crop_boxes)`
+- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
+- `crop_boxes`: list of `(x, y, width, height)` tuples
+- returns: list of cropped NumPy arrays
+- notes: output arrays are owned by NumPy without an extra copy from the owned Rust array
 
-- `images`: list of numpy arrays (H, W, 3) uint8
-- `crop_boxes`: list of (x, y, width, height) tuples
-- returns: list of cropped numpy arrays
-- **implementation**: TSR-optimized for mixed-shape batching
+### `batch_center_crop_images(images, target_sizes)`
 
-#### `batch_center_crop_images(images, target_sizes)`
+- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
+- `target_sizes`: list of `(width, height)` tuples
+- returns: list of center-cropped NumPy arrays
 
-- `images`: list of numpy arrays (H, W, 3) uint8
-- `target_sizes`: list of (width, height) tuples
-- returns: list of center-cropped numpy arrays
-- **implementation**: TSR-optimized for mixed-shape batching
+### `batch_random_crop_images(images, target_sizes)`
 
-#### `batch_random_crop_images(images, target_sizes)`
+- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
+- `target_sizes`: list of `(width, height)` tuples
+- returns: list of randomly cropped NumPy arrays
 
-- `images`: list of numpy arrays (H, W, 3) uint8
-- `target_sizes`: list of (width, height) tuples
-- returns: list of randomly cropped numpy arrays
-- **implementation**: TSR-optimized for mixed-shape batching
+### `batch_resize_images(images, target_sizes)`
 
-#### `batch_resize_images(images, target_sizes)`
+- `images`: list of NumPy arrays shaped `(H, W, 3)` with `uint8` data
+- `target_sizes`: list of `(width, height)` tuples
+- returns: list of resized NumPy arrays
+- implementation: OpenCV-backed resize with Rust/PyO3 conversion handling
 
-- `images`: list of numpy arrays (H, W, 3) uint8
-- `target_sizes`: list of (width, height) tuples
-- returns: list of resized numpy arrays
-- **implementation**: OpenCV for optimal performance
+### `batch_calculate_luminance(images)`
 
-#### `batch_calculate_luminance(images)`
-
-- `images`: list of numpy arrays (H, W, 3) uint8
+- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
 - returns: list of float luminance values
-- **implementation**: TSR SIMD-optimized (10-35x faster than NumPy)
+- notes: contiguous RGB/RGBA-like arrays use a channel-sum fast path; strided arrays fall back to the general ndarray path
 
-#### `batch_resize_videos(videos, target_sizes)`
+### `batch_resize_videos(videos, target_sizes)`
 
-- `videos`: list of numpy arrays (T, H, W, 3) uint8
-- `target_sizes`: list of (width, height) tuples
-- returns: list of resized video numpy arrays
+- `videos`: list of NumPy arrays shaped `(T, H, W, 3)` with `uint8` data
+- `target_sizes`: list of `(width, height)` tuples
+- returns: list of resized video NumPy arrays
 
-### rust functions
+## current benchmark snapshot
 
-same signatures but with `ndarray::Array3<u8>` and `ndarray::Array4<u8>` instead of numpy arrays. check the docs for details.
+These numbers are from the local benchmark run after the latest Python-interface optimizations:
+
+```bash
+.venv/bin/python -m pytest tests/test_performance_benchmarks.py -q -s
+```
+
+Environment: Linux x86_64, CPython 3.13, NumPy 2.3.4, system OpenCV 4.11 through the Rust `opencv` crate. Treat these as a point-in-time reference, not a cross-machine guarantee.
+
+| Benchmark | Before | After | Notes |
+|-----------|--------|-------|-------|
+| Crop batch, 16 images | 22.9 ms | 0.4 ms | Public `batch_crop_images` path |
+| Mixed-shape crop, 8 images | 50.2 ms | 3.3 ms | Mixed input and output sizes |
+| Luminance batch, 4 mixed images | 10.4 ms | 0.6 ms | Now faster than the OpenCV comparison in this run |
+| Mixed-shape luminance, 6 images | 78.3 ms | 3.3 ms | NumPy comparison was 19.4 ms in this run |
+| Complete resize + luminance pipeline | 5.9 ms | 0.6 ms | Four mixed-size inputs to 224x224 |
+
+Pytest-benchmark means from the same suite:
+
+| Benchmark | Mean after |
+|-----------|------------|
+| Center crop | 55.2 us |
+| Resize operations | 353.1 us |
+| Luminance calculation | 417.2 us |
+| Crop operations | 583.8 us |
+| Pipeline | 3.44 ms |
+| Video processing | 2.85 ms |
 
 ## architecture
 
-TSR uses a **best-of-breed hybrid approach** for optimal performance:
+TrainingSample uses different implementations for different operation types:
 
-### operation selection
+- Cropping: Rust/ndarray implementation with owned-array transfer into NumPy.
+- Luminance: Rust channel-sum fast path for contiguous arrays, with a general ndarray fallback for non-contiguous inputs.
+- Resize: OpenCV-backed implementation for image quality and mature interpolation behavior.
+- Video resize: OpenCV-backed frame resizing with batched Python binding output.
+- Format conversion: Rust SIMD implementation where the `simd` feature is enabled.
 
-- **cropping operations**: TSR implementation
-  - mixed-shape batching (8 different input shapes → 7 different output shapes)
-  - single API call: `tsr.batch_crop_images(mixed_images, mixed_crops)`
-  - vs competitor: individual loops required for each shape combination
-
-- **luminance calculation**: TSR SIMD implementation
-  - **18x faster** than NumPy for mixed-shape batches
-  - **35x faster** than NumPy for uniform batches
-  - vectorized across different image sizes in single batch call
-
-- **resize operations**: OpenCV implementation
-  - industry-standard performance and quality
-  - highly optimized C++ implementations
-  - **7-25x faster** than TSR resize implementations
-
-### static wheel distribution
-
-- OpenCV **statically linked** into wheel (no external dependencies)
-- single `pip install trainingsample` - no opencv-python conflicts
-- consistent performance across platforms
-- ~50MB wheel includes all optimizations
+The optimized path generally requires contiguous `uint8` arrays. Views such as `image[:, ::2, :]` remain supported by safe public APIs, but they may use slower fallback paths.
 
 ## features
 
-- **hybrid architecture**: best implementation for each operation
-- parallel processing with rayon (actually uses your cores)
-- zero-copy numpy integration via rust-numpy
-- proper error handling (no silent failures)
-- **static OpenCV** bundled (no external dependencies)
-- no python threading nonsense, GIL is released
-- memory efficient batch operations
-- supports both images and videos
-
-## 🏆 Industry-Leading Performance
-
-**BREAKTHROUGH ACHIEVEMENT: First library to beat cv2 by eliminating Python binding overhead while leveraging OpenCV's full C++ power**
-
-### 🥇 vs. opencv-python (cv2)
-
-| Operation | cv2 (opencv-python) | TSR (OpenCV+Rust) | TSR Speedup | Achievement |
-|-----------|---------------------|-------------------|-------------|-------------|
-| **Single Resize** | 0.134ms | **0.120ms** | **1.12x FASTER** | 🏆 **Beats cv2 bindings** |
-| **Batch Resize (8)** | 1.10ms | **0.47ms** | **2.4x FASTER** | 🏆 **Leverages OpenCV C++** |
-| **Crop Operations** | 1.40ms | **0.34ms** | **4.1x FASTER** | 🏆 **Zero-copy optimization** |
-| **Luminance Calc** | 4.38ms | **0.55ms** | **8.0x FASTER** | 🏆 **SIMD + OpenCV power** |
-
-### 🚀 Peak Performance Numbers
-- **17,204 images/sec** - Batch resize throughput
-- **Zero wrapper overhead** - Eliminated 76% of artificial performance losses
-- **True zero-copy** - Raw pointer → numpy conversion on-demand
-- **Intelligent dispatch** - Same API for single + batch with optimal performance
-
-### 🎯 Real-World Advantages
-
-#### How We Achieve This
-1. **Direct OpenCV C++**: Bypass cv2's Python binding overhead entirely
-2. **Zero artificial overhead**: Direct Mat headers, no intermediate conversions
-3. **Buffer pooling**: Memory reuse eliminates allocation bottlenecks that plague Python bindings
-4. **Adaptive threading**: Smart parallelization leveraging Rust's superior threading
-5. **Intelligent API**: Seamless auto-batching with optimal performance dispatch
-
-#### Industry Impact
-- **Computer Vision**: First library to beat cv2 by leveraging OpenCV's full C++ power
-- **Machine Learning**: Faster preprocessing = faster training pipelines
-- **Real-time Applications**: Sub-millisecond image processing capabilities
-- **Memory Efficiency**: True zero-copy iteration for large datasets
-
-**Bottom Line**: We leverage OpenCV's C++ excellence to eliminate the performance bottlenecks in Python bindings.
-
-## Apple Silicon Performance (M3 Max)
-
-Optimized SIMD implementations with concrete benchmarks:
-
-| Operation | Algorithm | Implementation | Speedup | Performance |
-|-----------|-----------|----------------|---------|-------------|
-| **Image Resize** | Bilinear | Multi-core NEON | **10.2x** | 1,412 MPx/s |
-| **Image Resize** | Lanczos4 | Metal GPU | **11.8x** | 112 MPx/s |
-| **Format Conversion** | RGB→RGBA | Portable SIMD | **4.4x** | 1,500 MPx/s |
-| **Format Conversion** | RGBA→RGB | Portable SIMD | **2.6x** | 1,651 MPx/s |
-| **Luminance Calc** | RGB→Y | NEON SIMD | **4.7x** | 545 images/sec |
-
-**Key Insights:**
-
-- **CPU SIMD** (multi-core NEON) optimal for memory-bound operations like bilinear resize
-- **GPU Metal** dominates compute-intensive algorithms like Lanczos4 interpolation
-- **Unified memory** architecture enables zero-copy GPU operations
-- **Automatic selection** between CPU/GPU based on algorithm characteristics
-
-Tested on Apple Silicon M3 Max (12 P-cores, 38-core GPU, 400 GB/s unified memory).
-
-## why this hybrid approach
-
-### vs pure opencv/pil
-
-- **OpenCV alone**: excellent resize performance, but poor mixed-shape batching
-- **PIL**: slow, GIL-bound, no batch operations
-- **TSR hybrid**: combines OpenCV's resize speed with TSR's batch/SIMD advantages
-
-### vs pure rust implementations
-
-- **TSR resize**: slower than OpenCV's highly-optimized C++ (7-25x difference)
-- **TSR luminance**: faster than NumPy due to SIMD (18-35x speedup)
-- **best of both**: use optimal implementation for each operation
-
-### static distribution advantage
-
-- **no dependency conflicts**: opencv-python version compatibility issues eliminated
-- **consistent performance**: same optimized OpenCV across all platforms
-- **simple deployment**: single wheel, no system dependencies
+- Python bindings through PyO3 and rust-numpy
+- Batch APIs for images and videos
+- OpenCV-compatible constants and helper functions for common operations
+- Optional SIMD feature for format conversion and selected numeric paths
+- Error handling for invalid dimensions, unsupported channels, and invalid crop bounds
+- Source build support for dynamic or static OpenCV configurations
 
 ## building from source
 
 ```bash
-# for python
 pip install maturin
 maturin develop --release
-
-# for rust
-cargo build --release
 ```
 
-requires rust 1.70+ and python 3.11+ if you want the python bindings.
+The OpenCV Rust bindings need to find a working OpenCV and Clang installation. If the environment has stale OpenCV or LLVM variables, unset them before building:
+
+```bash
+env -u OPENCV_LINK_LIBS -u OPENCV_LINK_PATHS -u OPENCV_INCLUDE_PATHS \
+    -u LIBCLANG_PATH -u LLVM_CONFIG_PATH \
+    maturin develop --release
+```
+
+See [docs/BUILDING_STATIC_OPENCV.md](docs/BUILDING_STATIC_OPENCV.md) for static OpenCV bundle notes.
 
 ## license
 
-MIT. do whatever you want with it, leave attribution in-tact.
+MIT. See [LICENSE](LICENSE).

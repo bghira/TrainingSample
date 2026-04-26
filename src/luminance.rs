@@ -1,37 +1,51 @@
 use ndarray::ArrayView3;
 
 #[cfg(feature = "simd")]
-pub use crate::luminance_simd::{
-    calculate_luminance_optimized, calculate_luminance_optimized_sequential, LuminanceMetrics,
-};
+pub use crate::luminance_simd::{calculate_luminance_optimized, LuminanceMetrics};
 
 /// Main luminance calculation function with automatic SIMD optimization
 pub fn calculate_luminance_array(image: &ArrayView3<u8>) -> f64 {
-    #[cfg(feature = "simd")]
-    {
-        let (result, _metrics) = calculate_luminance_optimized(image);
-        result
+    if let Some(result) = calculate_luminance_contiguous(image) {
+        return result;
     }
 
-    #[cfg(not(feature = "simd"))]
-    {
-        calculate_luminance_scalar(image)
-    }
+    calculate_luminance_scalar(image)
 }
 
 /// Single-threaded luminance calculation to avoid nested parallelism in batch operations
 pub fn calculate_luminance_array_sequential(image: &ArrayView3<u8>) -> f64 {
-    #[cfg(feature = "simd")]
-    {
-        // Use single-threaded SIMD optimization to avoid nested parallelism
-        let (result, _metrics) = calculate_luminance_optimized_sequential(image);
-        result
+    if let Some(result) = calculate_luminance_contiguous(image) {
+        return result;
     }
 
-    #[cfg(not(feature = "simd"))]
-    {
-        calculate_luminance_scalar(image)
+    calculate_luminance_scalar(image)
+}
+
+fn calculate_luminance_contiguous(image: &ArrayView3<u8>) -> Option<f64> {
+    let (height, width, channels) = image.dim();
+    let data = image.as_slice()?;
+
+    if height == 0 || width == 0 || channels == 0 {
+        return Some(0.0);
     }
+
+    if channels < 3 {
+        let sum: u64 = data.iter().map(|&x| x as u64).sum();
+        return Some(sum as f64 / data.len() as f64);
+    }
+
+    let pixel_count = height * width;
+    let mut r_sum = 0u64;
+    let mut g_sum = 0u64;
+    let mut b_sum = 0u64;
+
+    for pixel in data.chunks_exact(channels).take(pixel_count) {
+        r_sum += pixel[0] as u64;
+        g_sum += pixel[1] as u64;
+        b_sum += pixel[2] as u64;
+    }
+
+    Some((0.299 * r_sum as f64 + 0.587 * g_sum as f64 + 0.114 * b_sum as f64) / pixel_count as f64)
 }
 
 /// Ultra-fast adaptive luminance calculation with automatic SIMD/scalar selection
