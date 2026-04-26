@@ -126,9 +126,10 @@ OpenCV distribution once and point Cargo at it during compilation.
    PNG, WebP, etc.), install their static archives into the same `lib/` folder
    so Cargo can link them in one pass.
 
-> **macOS note**: Apple does not provide static builds of the C++ standard
-> library. Replace `static=stdc++` with `dylib=c++` (or `framework=Accelerate`
-> when required) in the linking step below.
+> **C++ runtime note**: many CI images do not install `libstdc++.a`.
+> On Linux, prefer `dylib=stdc++` unless you explicitly provide a static C++
+> runtime archive. On macOS, use `dylib=c++` (or `framework=Accelerate` when
+> required).
 
 ## 3. Point Cargo at the static toolchain
 
@@ -144,7 +145,7 @@ OPENCV_LINK_PATHS    = { value = "third_party/opencv-static/lib",      relative 
 OPENCV_DISABLE_PROBES = "pkg_config,cmake,vcpkg"
 # Static link OpenCV and the extra libraries it depends on.
 # Adjust the list to match the archives present in third_party/opencv-static/lib.
-OPENCV_LINK_LIBS = "static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=png,static=jpeg,static=tiff,static=webp,static=z,static=jasper,static=stdc++"
+OPENCV_LINK_LIBS = "static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=png,static=jpeg,static=tiff,static=webp,static=z,static=jasper,dylib=stdc++"
 ```
 
 The helper script in this repository disables OpenJPEG support
