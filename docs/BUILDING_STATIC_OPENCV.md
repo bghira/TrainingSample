@@ -2,7 +2,7 @@
 
 The `opencv` crate expects to find an existing OpenCV toolkit and, by default, it
 links against the dynamic libraries that come with a system installation
-(`libopencv_core.dylib`, `libopencv_core.so`, …). To ship the `trainingsample`
+(`libopencv_core.dylib`, `libopencv_core.so`, etc.). To ship the `trainingsample`
 crate without asking end users to install OpenCV themselves, build a static
 OpenCV distribution once and point Cargo at it during compilation.
 
@@ -104,7 +104,7 @@ OpenCV distribution once and point Cargo at it during compilation.
    ```bash
    cp ~/Downloads/opencv-build-static/3rdparty/lib/liblibjpeg-turbo.a third_party/opencv-static/lib/
    ln -sf liblibjpeg-turbo.a third_party/opencv-static/lib/libjpeg.a
-   # Repeat for liblibpng.a→libpng.a, liblibtiff.a→libtiff.a, liblibwebp.a→libwebp.a, libzlib.a→libz.a, liblibjasper.a→libjasper.a
+   # Repeat for liblibpng.a -> libpng.a, liblibtiff.a -> libtiff.a, liblibwebp.a -> libwebp.a, libzlib.a -> libz.a, liblibjasper.a -> libjasper.a
    ```
 
 3. After installation you should have:
@@ -130,7 +130,7 @@ OpenCV distribution once and point Cargo at it during compilation.
 > library. Replace `static=stdc++` with `dylib=c++` (or `framework=Accelerate`
 > when required) in the linking step below.
 
-## 2. Point Cargo at the static toolchain
+## 3. Point Cargo at the static toolchain
 
 Add a `.cargo/config.toml` (kept inside the repo) with the environment variables
 that the `opencv` build script understands:
@@ -159,7 +159,7 @@ file so subsequent runs do not skip regeneration.
 
 If you elected to install the individual module archives instead of
 `opencv_world`, list each one (`static=opencv_core`, `static=opencv_imgproc`,
-…). Keep the order roughly from high- to low-level modules so the linker can
+and so on). Keep the order roughly from high- to low-level modules so the linker can
 resolve symbols in one pass.
 
 For cross-compilation add target-specific sections, e.g.:
@@ -169,7 +169,7 @@ For cross-compilation add target-specific sections, e.g.:
 OPENCV_LINK_LIBS = "static=opencv_world,static=avformat,static=avcodec,static=avfilter,static=swresample,static=swscale,static=avutil,static=png,static=jpeg,static=tiff,static=z,static=jasper,dylib=c++"
 ```
 
-## 3. Build the crate
+## 4. Build the crate
 
 With the static bundle in place you can now build the crate without touching the
 system OpenCV installation:
@@ -182,7 +182,7 @@ The resulting `libtrainingsample.{so,dylib}` (or the wheels produced by the
 Python bindings) now embed the OpenCV symbols directly, so end users do not need
 `opencv_core` on their machines.
 
-## 4. Regenerating the bundle
+## 5. Regenerating the bundle
 
 Whenever you need to update OpenCV:
 
@@ -190,8 +190,8 @@ Whenever you need to update OpenCV:
    tree.
 2. Verify that the list in `OPENCV_LINK_LIBS` still matches the archives produced.
 3. Commit the regenerated contents of `third_party/opencv-static/` if you keep
-   it under version control (or upload it to your release pipeline’s artifact
+   it under version control (or upload it to your release pipeline's artifact
    store).
 
-That is all Cargo needs—no changes to `Cargo.toml` are required beyond enabling
+That is all Cargo needs. No changes to `Cargo.toml` are required beyond enabling
 the `opencv` feature when you want the acceleration path.
