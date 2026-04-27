@@ -372,7 +372,7 @@ jobs:
         fi
         echo "Installing wheel: ${wheel}"
         pip install "${wheel}"
-        python -c 'import trainingsample' || echo "Import failed"
+        python -c 'import trainingsample'
 
   release:
     name: Release
