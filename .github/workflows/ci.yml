@@ -265,7 +265,7 @@ jobs:
         components: rustfmt, clippy
 
     - name: Install cargo-audit
-      run: cargo install cargo-audit
+      run: cargo install cargo-audit --version 0.22.2 --locked
 
     - name: Install pre-commit
       run: pip install pre-commit
