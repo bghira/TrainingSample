@@ -65,47 +65,81 @@ impl OpenCVBatchProcessor {
             anyhow::bail!("Number of videos and target sizes must match");
         }
 
-        // ULTRA-OPTIMIZED: Flatten all frames from all videos into one massive batch
-        let mut all_frames = Vec::new();
-        let mut all_target_sizes = Vec::new();
-        let mut video_frame_counts = Vec::new();
+        let mut results = Vec::with_capacity(videos.len());
 
-        for (video, &target_size) in videos.iter().zip(target_sizes.iter()) {
-            let (frames, _, _, _) = video.dim();
-            video_frame_counts.push(frames);
-
-            // Collect all frames from this video
-            for frame_idx in 0..frames {
-                let frame = video.index_axis(ndarray::Axis(0), frame_idx);
-                all_frames.push(frame);
-                all_target_sizes.push(target_size);
+        for (video, &(target_width, target_height)) in videos.iter().zip(target_sizes.iter()) {
+            let (frames, src_height, src_width, channels) = video.dim();
+            if channels != 3 {
+                anyhow::bail!("Only 3-channel RGB videos are supported");
             }
-        }
 
-        // Process ALL frames in one giant batch operation - maximum efficiency!
-        let resized_frames = self.batch_resize_images(&all_frames, &all_target_sizes)?;
-
-        // Reconstruct video structure from flattened results
-        let mut results = Vec::new();
-        let mut frame_idx = 0;
-
-        for (video_idx, frame_count) in video_frame_counts.iter().enumerate() {
-            let (target_width, target_height) = target_sizes[video_idx];
-            let result_shape = (
-                *frame_count,
+            let src_height = i32::try_from(src_height)?;
+            let src_width = i32::try_from(src_width)?;
+            let dst_height = i32::try_from(target_height)?;
+            let dst_width = i32::try_from(target_width)?;
+            let mut video_result = ndarray::Array4::<u8>::zeros((
+                frames,
                 target_height as usize,
                 target_width as usize,
-                3,
-            );
-            let mut video_result = ndarray::Array4::<u8>::zeros(result_shape);
+                channels,
+            ));
+            let output = video_result
+                .as_slice_mut()
+                .ok_or_else(|| anyhow::anyhow!("Output video is not contiguous"))?;
+            let output_frame_len = (target_height as usize)
+                .checked_mul(target_width as usize)
+                .and_then(|pixels| pixels.checked_mul(channels))
+                .ok_or_else(|| anyhow::anyhow!("Target video dimensions are too large"))?;
 
-            // Copy frames for this video
-            for local_frame_idx in 0..*frame_count {
-                let global_frame = &resized_frames[frame_idx];
-                video_result
-                    .index_axis_mut(ndarray::Axis(0), local_frame_idx)
-                    .assign(global_frame);
-                frame_idx += 1;
+            for frame_idx in 0..frames {
+                let frame = video.index_axis(ndarray::Axis(0), frame_idx);
+                let input = frame
+                    .as_slice()
+                    .ok_or_else(|| anyhow::anyhow!("Video frame data is not contiguous"))?;
+                let output_offset = frame_idx
+                    .checked_mul(output_frame_len)
+                    .ok_or_else(|| anyhow::anyhow!("Target video dimensions are too large"))?;
+                let output_end = output_offset
+                    .checked_add(output_frame_len)
+                    .ok_or_else(|| anyhow::anyhow!("Target video dimensions are too large"))?;
+                let output_len = output.len();
+                let output_frame = output.get_mut(output_offset..output_end).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Output frame {} range {}..{} exceeds the video buffer length {}",
+                        frame_idx,
+                        output_offset,
+                        output_end,
+                        output_len
+                    )
+                })?;
+
+                let src_mat = unsafe {
+                    Mat::new_rows_cols_with_data_unsafe(
+                        src_height,
+                        src_width,
+                        opencv::core::CV_8UC3,
+                        input.as_ptr() as *mut std::ffi::c_void,
+                        opencv::core::Mat_AUTO_STEP,
+                    )?
+                };
+                let mut dst_mat = unsafe {
+                    Mat::new_rows_cols_with_data_unsafe(
+                        dst_height,
+                        dst_width,
+                        opencv::core::CV_8UC3,
+                        output_frame.as_mut_ptr() as *mut std::ffi::c_void,
+                        opencv::core::Mat_AUTO_STEP,
+                    )?
+                };
+
+                resize(
+                    &src_mat,
+                    &mut dst_mat,
+                    opencv::core::Size::new(dst_width, dst_height),
+                    0.0,
+                    0.0,
+                    INTER_LINEAR,
+                )?;
             }
 
             results.push(video_result);
