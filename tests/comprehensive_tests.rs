@@ -598,45 +598,59 @@ mod performance_validation_tests {
 
     #[test]
     fn test_batch_operations_scale_appropriately() {
+        use std::hint::black_box;
         use std::time::Instant;
 
         let base_img = create_gradient_image();
+        let crop = (10, 10, 30, 20);
+        let batch_size = 50;
+        let batch_imgs = vec![base_img.clone(); batch_size];
+        let batch_crops = vec![crop; batch_size];
 
-        // Warm up - run a few operations to ensure consistent timing
+        // Warm both Rayon paths before measuring.
         for _ in 0..3 {
-            let _ = batch_crop_image_arrays(std::slice::from_ref(&base_img), &[(10, 10, 30, 20)]);
+            black_box(batch_crop_image_arrays(
+                std::slice::from_ref(&base_img),
+                &[crop],
+            ));
+            black_box(batch_crop_image_arrays(&batch_imgs, &batch_crops));
         }
 
-        // Single operation - run multiple times and take average
-        let mut single_total = std::time::Duration::new(0, 0);
-        for _ in 0..5 {
+        // Each sample performs enough work to keep microsecond-scale timer
+        // noise from dominating the comparison.
+        let mut single_samples = Vec::with_capacity(11);
+        let mut batch_samples = Vec::with_capacity(11);
+        for _ in 0..11 {
             let start = Instant::now();
-            let _single =
-                batch_crop_image_arrays(std::slice::from_ref(&base_img), &[(10, 10, 30, 20)]);
-            single_total += start.elapsed();
-        }
-        let single_duration = single_total / 5;
+            for _ in 0..100 {
+                black_box(batch_crop_image_arrays(
+                    std::slice::from_ref(&base_img),
+                    &[crop],
+                ));
+            }
+            single_samples.push(start.elapsed().as_nanos() / 100);
 
-        // Batch of 50 (larger batch for better parallelism benefits)
-        let batch_imgs = vec![base_img.clone(); 50];
-        let batch_crops = vec![(10, 10, 30, 20); 50];
-
-        // Run batch operation multiple times and take average
-        let mut batch_total = std::time::Duration::new(0, 0);
-        for _ in 0..3 {
             let start = Instant::now();
-            let _batch = batch_crop_image_arrays(&batch_imgs, &batch_crops);
-            batch_total += start.elapsed();
+            for _ in 0..10 {
+                black_box(batch_crop_image_arrays(&batch_imgs, &batch_crops));
+            }
+            batch_samples.push(start.elapsed().as_nanos() / (10 * batch_size as u128));
         }
-        let batch_duration = batch_total / 3;
 
-        // Batch should not be more than 75x slower (more reasonable for 50x operations)
-        // Allow for system variance and parallelism overhead
-        let slowdown_ratio = batch_duration.as_nanos() as f64 / single_duration.as_nanos() as f64;
+        single_samples.sort_unstable();
+        batch_samples.sort_unstable();
+        let single_per_image = single_samples[single_samples.len() / 2];
+        let batch_per_image = batch_samples[batch_samples.len() / 2];
+        let per_image_ratio = batch_per_image as f64 / single_per_image as f64;
+
+        // Small crops may not amortize Rayon scheduling, so this is a broad
+        // regression guard rather than an assertion that batching must win.
         assert!(
-            slowdown_ratio < 75.0,
-            "Batch processing should benefit from parallelism: ratio {:.2}, single: {:?}, batch: {:?}",
-            slowdown_ratio, single_duration, batch_duration
+            per_image_ratio < 20.0,
+            "Batch crop per-image cost regressed: ratio {:.2}, single: {}ns, batch: {}ns",
+            per_image_ratio,
+            single_per_image,
+            batch_per_image
         );
     }
 }

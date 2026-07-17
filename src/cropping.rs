@@ -8,19 +8,47 @@ pub fn crop_image_array(
     width: usize,
     height: usize,
 ) -> Result<Array3<u8>> {
-    let (img_height, img_width, _channels) = image.dim();
+    let (img_height, img_width, channels) = image.dim();
 
     if width == 0 || height == 0 {
         return Err(anyhow::anyhow!("Crop dimensions must be greater than zero"));
     }
 
-    if x + width > img_width || y + height > img_height {
+    let end_x = x
+        .checked_add(width)
+        .ok_or_else(|| anyhow::anyhow!("Crop bounds exceed image dimensions"))?;
+    let end_y = y
+        .checked_add(height)
+        .ok_or_else(|| anyhow::anyhow!("Crop bounds exceed image dimensions"))?;
+
+    if end_x > img_width || end_y > img_height {
         return Err(anyhow::anyhow!("Crop bounds exceed image dimensions"));
     }
 
-    // Use assign to avoid allocation where possible, but still return owned array
-    let slice = image.slice(s![y..y + height, x..x + width, ..]);
-    // Only allocate when we need to return an owned array
+    if let Some(src) = image.as_slice() {
+        let output_len = height
+            .checked_mul(width)
+            .and_then(|pixels| pixels.checked_mul(channels))
+            .ok_or_else(|| anyhow::anyhow!("Crop dimensions are too large"))?;
+        let mut output = Vec::with_capacity(output_len);
+
+        // Every byte in the reserved output is initialized by crop_raw_buffer
+        // before the Vec length is exposed to safe Rust.
+        unsafe {
+            crop_raw_buffer(
+                src.as_ptr(),
+                (img_height, img_width, channels),
+                output.as_mut_ptr(),
+                (y, x, height, width),
+            );
+            output.set_len(output_len);
+        }
+
+        return Array3::from_shape_vec((height, width, channels), output).map_err(Into::into);
+    }
+
+    // Preserve support for non-contiguous ndarray views with the generic path.
+    let slice = image.slice(s![y..end_y, x..end_x, ..]);
     Ok(slice.to_owned())
 }
 
@@ -111,16 +139,7 @@ pub fn batch_center_crop_arrays(
         let actual_width = target_width.min(img_width);
         let actual_height = target_height.min(img_height);
 
-        // Validate bounds
-        if x + actual_width > img_width || y + actual_height > img_height {
-            return Err(anyhow::anyhow!("Crop bounds exceed image dimensions"));
-        }
-
-        // Direct slice and copy - optimized for speed
-        let cropped = image
-            .slice(s![y..y + actual_height, x..x + actual_width, ..])
-            .to_owned();
-        results.push(cropped);
+        results.push(crop_image_array(image, x, y, actual_width, actual_height)?);
     }
 
     Ok(results)
