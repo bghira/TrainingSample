@@ -99,6 +99,19 @@ impl OpenCVBatchProcessor {
                 let output_offset = frame_idx
                     .checked_mul(output_frame_len)
                     .ok_or_else(|| anyhow::anyhow!("Target video dimensions are too large"))?;
+                let output_end = output_offset
+                    .checked_add(output_frame_len)
+                    .ok_or_else(|| anyhow::anyhow!("Target video dimensions are too large"))?;
+                let output_len = output.len();
+                let output_frame = output.get_mut(output_offset..output_end).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Output frame {} range {}..{} exceeds the video buffer length {}",
+                        frame_idx,
+                        output_offset,
+                        output_end,
+                        output_len
+                    )
+                })?;
 
                 let src_mat = unsafe {
                     Mat::new_rows_cols_with_data_unsafe(
@@ -114,7 +127,7 @@ impl OpenCVBatchProcessor {
                         dst_height,
                         dst_width,
                         opencv::core::CV_8UC3,
-                        output.as_mut_ptr().add(output_offset) as *mut std::ffi::c_void,
+                        output_frame.as_mut_ptr() as *mut std::ffi::c_void,
                         opencv::core::Mat_AUTO_STEP,
                     )?
                 };
