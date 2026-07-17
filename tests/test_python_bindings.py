@@ -1,9 +1,11 @@
 """Tests for Python bindings of training_sample_rust."""
 
 import importlib.util
+import io
 
 import numpy as np
 import pytest
+from PIL import Image
 
 try:
     import trainingsample as tsr
@@ -33,6 +35,17 @@ def sample_video():
 
 class TestImageOperations:
     """Test image processing operations."""
+
+    @pytest.mark.parametrize("buffer_type", [bytes, bytearray])
+    def test_imdecode_owned_buffer(self, buffer_type):
+        """Decode buffers that remain valid while the GIL is released."""
+        image = np.arange(4 * 5 * 3, dtype=np.uint8).reshape((4, 5, 3))
+        encoded = io.BytesIO()
+        Image.fromarray(image).save(encoded, format="PNG")
+
+        decoded = tsr.imdecode_py(buffer_type(encoded.getvalue()), 1)
+
+        np.testing.assert_array_equal(decoded, image)
 
     def test_batch_crop_images(self, sample_images):
         """Test batch cropping with custom coordinates."""
