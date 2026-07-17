@@ -131,28 +131,55 @@ impl OpenCVBatchProcessor {
         target_height: u32,
         interpolation: i32,
     ) -> Result<Array3<u8>> {
-        let (_height, _width, channels) = image.dim();
+        let (height, width, channels) = image.dim();
 
         if channels != 3 {
             anyhow::bail!("Only 3-channel RGB images are supported");
         }
 
-        // Convert ndarray to OpenCV Mat
-        let src_mat = self.ndarray_to_mat(image)?;
+        let data_slice = image
+            .as_slice()
+            .ok_or_else(|| anyhow::anyhow!("Image data is not contiguous"))?;
+        let src_height = i32::try_from(height)?;
+        let src_width = i32::try_from(width)?;
+        let dst_height = i32::try_from(target_height)?;
+        let dst_width = i32::try_from(target_width)?;
 
-        // Perform OpenCV resize
-        let mut dst_mat = Mat::default();
+        // OpenCV only needs lightweight Mat headers here. Point them at the
+        // ndarray storage so resize can read the input and write the final
+        // output without copying either full image through an intermediate Mat.
+        let src_mat = unsafe {
+            Mat::new_rows_cols_with_data_unsafe(
+                src_height,
+                src_width,
+                opencv::core::CV_8UC3,
+                data_slice.as_ptr() as *mut std::ffi::c_void,
+                opencv::core::Mat_AUTO_STEP,
+            )?
+        };
+
+        let mut result =
+            Array3::<u8>::zeros((target_height as usize, target_width as usize, channels));
+        let mut dst_mat = unsafe {
+            Mat::new_rows_cols_with_data_unsafe(
+                dst_height,
+                dst_width,
+                opencv::core::CV_8UC3,
+                result.as_mut_ptr() as *mut std::ffi::c_void,
+                opencv::core::Mat_AUTO_STEP,
+            )?
+        };
+
         resize(
             &src_mat,
             &mut dst_mat,
-            opencv::core::Size::new(target_width as i32, target_height as i32),
+            opencv::core::Size::new(dst_width, dst_height),
             0.0,
             0.0,
             interpolation,
         )?;
 
-        // Convert back to ndarray
-        self.mat_to_ndarray(&dst_mat)
+        Ok(result)
     }
 
     // Single video resize function removed - now using batch_resize_videos for all operations
@@ -217,28 +244,6 @@ impl OpenCVBatchProcessor {
         }
 
         Ok(mat)
-    }
-
-    /// Convert OpenCV Mat back to ndarray (optimized for performance)
-    fn mat_to_ndarray(&self, mat: &Mat) -> Result<Array3<u8>> {
-        let height = mat.rows() as usize;
-        let width = mat.cols() as usize;
-        let channels = mat.channels() as usize;
-
-        if channels != 3 {
-            anyhow::bail!("Expected 3-channel image");
-        }
-
-        let mut result = Array3::<u8>::zeros((height, width, channels));
-
-        // Optimized bulk memory copy from OpenCV Mat to ndarray
-        unsafe {
-            let src_ptr = mat.ptr(0)?;
-            let dst_ptr = result.as_mut_ptr();
-            std::ptr::copy_nonoverlapping(src_ptr, dst_ptr, height * width * channels);
-        }
-
-        Ok(result)
     }
 }
 
