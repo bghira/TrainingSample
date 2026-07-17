@@ -140,10 +140,15 @@ impl OpenCVBatchProcessor {
         let data_slice = image
             .as_slice()
             .ok_or_else(|| anyhow::anyhow!("Image data is not contiguous"))?;
-        let src_height = i32::try_from(height)?;
-        let src_width = i32::try_from(width)?;
-        let dst_height = i32::try_from(target_height)?;
-        let dst_width = i32::try_from(target_width)?;
+        let src_height = i32::try_from(height)
+            .map_err(|_| anyhow::anyhow!("Source height {} exceeds OpenCV's limit", height))?;
+        let src_width = i32::try_from(width)
+            .map_err(|_| anyhow::anyhow!("Source width {} exceeds OpenCV's limit", width))?;
+        let dst_height = i32::try_from(target_height).map_err(|_| {
+            anyhow::anyhow!("Target height {} exceeds OpenCV's limit", target_height)
+        })?;
+        let dst_width = i32::try_from(target_width)
+            .map_err(|_| anyhow::anyhow!("Target width {} exceeds OpenCV's limit", target_width))?;
 
         // OpenCV only needs lightweight Mat headers here. Point them at the
         // ndarray storage so resize can read the input and write the final
