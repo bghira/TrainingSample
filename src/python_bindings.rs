@@ -1220,7 +1220,10 @@ pub fn imdecode_py<'py>(
         }
     };
 
-    match imdecode(buf, imread_flags) {
+    let buf = buf.to_vec();
+    let decoded = py.allow_threads(move || imdecode(&buf, imread_flags));
+
+    match decoded {
         Ok(image) => {
             let py_array = PyArray3::from_owned_array_bound(py, image);
             Ok(py_array)
