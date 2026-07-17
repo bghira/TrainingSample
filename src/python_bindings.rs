@@ -599,10 +599,8 @@ fn is_tuple_or_list_of_two(obj: &Bound<PyAny>) -> bool {
 #[cfg(feature = "opencv")]
 #[pyclass]
 pub struct ResizeIterator {
-    /// Raw buffer pointers and their dimensions
-    buffers: Vec<(Vec<u8>, (usize, usize, usize))>, // (buffer, (height, width, channels))
-    /// Current iteration index
-    index: usize,
+    /// Completed buffers waiting to be transferred to NumPy.
+    buffers: std::collections::VecDeque<(Vec<u8>, (usize, usize, usize))>,
 }
 
 #[cfg(feature = "opencv")]
@@ -613,17 +611,13 @@ impl ResizeIterator {
     }
 
     fn __next__<'py>(&mut self, py: Python<'py>) -> Option<Bound<'py, PyArray3<u8>>> {
-        if self.index >= self.buffers.len() {
-            return None;
-        }
+        let (buffer, (height, width, channels)) = self.buffers.pop_front()?;
 
-        let (buffer, (height, width, channels)) = &self.buffers[self.index];
-        self.index += 1;
-
-        // Convert raw buffer directly to PyArray3 - ZERO intermediate steps!
-        match ndarray::Array3::from_shape_vec((*height, *width, *channels), buffer.clone()) {
+        // Transfer the completed allocation directly into the ndarray instead
+        // of cloning the full resized image during iteration.
+        match ndarray::Array3::from_shape_vec((height, width, channels), buffer) {
             Ok(array) => Some(PyArray3::from_owned_array_bound(py, array)),
-            Err(_) => None, // Skip malformed arrays
+            Err(_) => None, // Malformed buffer; end iteration (StopIteration)
         }
     }
 
@@ -677,8 +671,7 @@ pub fn batch_resize_images_iterator<'py>(
         return Bound::new(
             py,
             ResizeIterator {
-                buffers: Vec::new(),
-                index: 0,
+                buffers: std::collections::VecDeque::new(),
             },
         );
     }
@@ -856,7 +849,12 @@ pub fn batch_resize_images_iterator<'py>(
         .map_err(|e| pyo3::exceptions::PyRuntimeError::new_err(format!("Resize failed: {}", e)))?;
 
     // Return iterator with raw buffers - conversion happens on-demand!
-    Bound::new(py, ResizeIterator { buffers, index: 0 })
+    Bound::new(
+        py,
+        ResizeIterator {
+            buffers: buffers.into(),
+        },
+    )
 }
 
 // TSR CROPPING OPERATIONS (BENCHMARK WINNERS)

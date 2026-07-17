@@ -156,6 +156,31 @@ class TestZeroCopyBindings:
         with pytest.raises(ValueError, match="C-contiguous"):
             tsr.batch_resize_images_iterator([strided], [(16, 16)])
 
+    def test_zero_copy_resize_iterator_transfers_each_result(self):
+        """Iterator should yield owned results once and report remaining length."""
+        if not hasattr(tsr, "batch_resize_images_iterator"):
+            pytest.skip("OpenCV resize iterator bindings not available")
+
+        images = [
+            np.full((32, 48, 3), 17, dtype=np.uint8),
+            np.full((24, 40, 3), 231, dtype=np.uint8),
+        ]
+        iterator = tsr.batch_resize_images_iterator(images, [(12, 8), (10, 6)])
+
+        assert len(iterator) == 2
+        first = next(iterator)
+        assert first.shape == (8, 12, 3)
+        assert np.all(first == 17)
+        assert len(iterator) == 1
+
+        second = next(iterator)
+        assert second.shape == (6, 10, 3)
+        assert np.all(second == 231)
+        assert len(iterator) == 0
+
+        with pytest.raises(StopIteration):
+            next(iterator)
+
 
 class TestErrorHandling:
     """Test error handling and edge cases."""
