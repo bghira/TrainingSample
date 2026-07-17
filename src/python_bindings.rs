@@ -1204,7 +1204,7 @@ pub fn resize_lanczos4_opencv<'py>(
 #[pyfunction]
 pub fn imdecode_py<'py>(
     py: Python<'py>,
-    buf: &[u8],
+    buf: pyo3::pybacked::PyBackedBytes,
     flags: i32,
 ) -> PyResult<Bound<'py, PyArray3<u8>>> {
     use crate::cv_compat::{imdecode, ImreadFlags};
@@ -1220,7 +1220,6 @@ pub fn imdecode_py<'py>(
         }
     };
 
-    let buf = buf.to_vec();
     let decoded = py.allow_threads(move || imdecode(&buf, imread_flags));
 
     match decoded {
