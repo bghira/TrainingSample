@@ -258,8 +258,8 @@ class TestBasicPerformance:
         )
 
     @pytest.mark.skipif(not HAS_OPENCV, reason="OpenCV not available")
-    def test_resize_batch_vs_individual_opencv(self, performance_test_images):
-        """Show TSR batch advantage: batch processing vs individual OpenCV calls."""
+    def test_resize_batch_vs_direct_opencv(self, performance_test_images):
+        """Compare TSR batching with equivalent direct OpenCV resize calls."""
         images = performance_test_images["mixed_sizes"][:8]  # Mix of different sizes
         target_size = (224, 224)
         target_sizes = [target_size] * len(images)
@@ -269,35 +269,29 @@ class TestBasicPerformance:
         tsr_results = tsr.batch_resize_images(images, target_sizes)
         tsr_time = time.perf_counter() - start
 
-        # OpenCV: Individual calls (the old way)
+        # OpenCV: equivalent individual resize calls. Resize is channel-order
+        # agnostic, so RGB/BGR conversions would add unrelated work.
         start = time.perf_counter()
-        opencv_results = []
-        for img in images:
-            # Convert to BGR for OpenCV, then back to RGB
-            bgr_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            resized_bgr = cv2.resize(
-                bgr_img, target_size, interpolation=cv2.INTER_LINEAR
-            )
-            resized_rgb = cv2.cvtColor(resized_bgr, cv2.COLOR_BGR2RGB)
-            opencv_results.append(resized_rgb)
+        opencv_results = [
+            cv2.resize(img, target_size, interpolation=cv2.INTER_LINEAR)
+            for img in images
+        ]
         opencv_time = time.perf_counter() - start
 
-        speedup = opencv_time / tsr_time if tsr_time > 0 else float("inf")
+        relative_time = opencv_time / tsr_time if tsr_time > 0 else float("inf")
 
         # Validate results
         assert len(tsr_results) == len(opencv_results) == len(images)
         for i, (tsr_img, cv_img) in enumerate(zip(tsr_results, opencv_results)):
             expected_shape = (target_size[1], target_size[0], 3)
             assert tsr_img.shape == cv_img.shape == expected_shape
-            # Results should be reasonably close (different algorithms may differ)
-            # TSR uses OpenCV internally but may have different interpolation settings
+            # Separate OpenCV builds can differ slightly in interpolation rounding.
             tsr_float = tsr_img.astype(float)
             cv_float = cv_img.astype(float)
             diff = np.mean(np.abs(tsr_float - cv_float))
-            # More lenient comparison since different resize implementations can vary
-            assert diff < 25.0, f"Image {i}: Results too different (mean diff: {diff})"
+            assert diff < 1.0, f"Image {i}: Results too different (mean diff: {diff})"
 
-        print(f"🚀 Resize Performance Comparison (batch size {len(images)}):")
+        print(f"Resize performance comparison (batch size {len(images)}):")
         print(f"  Input shapes: {[img.shape[:2] for img in images]}")
         tsr_imgs_per_sec = len(images) / tsr_time
         print(f"  TSR (batch):      {tsr_time:.4f}s ({tsr_imgs_per_sec:.1f} imgs/sec)")
@@ -306,14 +300,11 @@ class TestBasicPerformance:
             f"  OpenCV (individual): {opencv_time:.4f}s "
             f"({cv_imgs_per_sec:.1f} imgs/sec)"
         )
-        print(f"  🎯 TSR Advantage: {speedup:.2f}x faster")
-        print("  💡 Why TSR exists: Batch processing beats " "individual OpenCV calls")
+        print(f"  Relative time (OpenCV / TSR): {relative_time:.2f}x")
 
     @pytest.mark.skipif(not HAS_OPENCV, reason="OpenCV not available")
     def test_luminance_batch_vs_individual_opencv(self, performance_test_images):
-        """
-        Show TSR batch advantage: luminance calculation vs individual OpenCV calls.
-        """
+        """Compare TSR luminance with equivalent individual OpenCV calls."""
         images = performance_test_images["mixed_sizes"][:12]  # Mix of different sizes
 
         # TSR: Single batch call handles mixed shapes
@@ -321,32 +312,29 @@ class TestBasicPerformance:
         tsr_results = tsr.batch_calculate_luminance(images)
         tsr_time = time.perf_counter() - start
 
-        # OpenCV: Individual calls (the old way)
+        # OpenCV accepts RGB input directly for grayscale conversion.
         start = time.perf_counter()
         opencv_results = []
         for img in images:
-            # Convert RGB to BGR for OpenCV
-            bgr_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            # Convert to grayscale using OpenCV
-            gray = cv2.cvtColor(bgr_img, cv2.COLOR_BGR2GRAY)
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
             # Calculate mean luminance
             luminance = np.mean(gray)
             opencv_results.append(luminance)
         opencv_time = time.perf_counter() - start
 
-        speedup = opencv_time / tsr_time if tsr_time > 0 else float("inf")
+        relative_time = opencv_time / tsr_time if tsr_time > 0 else float("inf")
 
         # Validate results
         assert len(tsr_results) == len(opencv_results) == len(images)
         for i, (tsr_lum, cv_lum) in enumerate(zip(tsr_results, opencv_results)):
-            # Results should be close (small differences due to RGB vs BGR conversion)
+            # Results should be close despite implementation rounding differences.
             diff = abs(tsr_lum - cv_lum)
             assert diff < 2.0, (
                 f"Image {i}: Results too different: "
                 f"TSR {tsr_lum:.2f} vs OpenCV {cv_lum:.2f}"
             )
 
-        print(f"🚀 Luminance Performance Comparison (batch size {len(images)}):")
+        print(f"Luminance performance comparison (batch size {len(images)}):")
         print(f"  Input shapes: {[img.shape[:2] for img in images]}")
         tsr_imgs_per_sec = len(images) / tsr_time
         print(
@@ -357,14 +345,11 @@ class TestBasicPerformance:
             f"  OpenCV (individual): {opencv_time:.4f}s "
             f"({cv_imgs_per_sec:.1f} imgs/sec)"
         )
-        print(f"  🎯 TSR Advantage: {speedup:.2f}x faster")
-        print("  💡 Why TSR exists: Batch SIMD processing beats individual calls")
+        print(f"  Relative time (OpenCV / TSR): {relative_time:.2f}x")
 
     @pytest.mark.skipif(not HAS_OPENCV, reason="OpenCV not available")
     def test_complete_pipeline_batch_vs_individual(self, performance_test_images):
-        """
-        Show TSR's ultimate advantage: complete pipeline in batch vs individual ops.
-        """
+        """Compare equivalent resize-and-luminance pipelines."""
         images = performance_test_images["mixed_sizes"][:8]  # Mix of different sizes
         target_size = (224, 224)
         target_sizes = [target_size] * len(images)
@@ -377,22 +362,17 @@ class TestBasicPerformance:
         luminances = tsr.batch_calculate_luminance(resized)
         tsr_time = time.perf_counter() - start
 
-        # OpenCV: Individual operations (the painful old way)
+        # OpenCV: equivalent individual operations on RGB data.
         start = time.perf_counter()
         opencv_luminances = []
         for img in images:
-            # Individual resize with color space conversions
-            bgr_img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
-            resized_bgr = cv2.resize(
-                bgr_img, target_size, interpolation=cv2.INTER_LINEAR
-            )
-            # Individual luminance calculation
-            gray = cv2.cvtColor(resized_bgr, cv2.COLOR_BGR2GRAY)
+            resized_rgb = cv2.resize(img, target_size, interpolation=cv2.INTER_LINEAR)
+            gray = cv2.cvtColor(resized_rgb, cv2.COLOR_RGB2GRAY)
             luminance = np.mean(gray)
             opencv_luminances.append(luminance)
         opencv_time = time.perf_counter() - start
 
-        speedup = opencv_time / tsr_time if tsr_time > 0 else float("inf")
+        relative_time = opencv_time / tsr_time if tsr_time > 0 else float("inf")
 
         # Validate results
         assert len(luminances) == len(opencv_luminances) == len(images)
@@ -404,7 +384,7 @@ class TestBasicPerformance:
             )
 
         print(
-            f"🚀 Complete Pipeline Performance (resize + luminance, "
+            f"Complete pipeline performance (resize + luminance, "
             f"batch size {len(images)}):"
         )
         input_shapes = [img.shape[:2] for img in images]
@@ -419,12 +399,8 @@ class TestBasicPerformance:
             f"  OpenCV (individual):     {opencv_time:.4f}s "
             f"({cv_imgs_per_sec:.1f} imgs/sec)"
         )
-        print(f"  🎯 TSR Advantage: {speedup:.2f}x faster")
-        print("  💡 Key Benefits:")
-        print(f"    • 2 batch calls vs {len(images)} individual operations")
-        print("    • Mixed-shape handling in single API calls")
-        print("    • No color space conversion overhead")
-        print("    • SIMD parallelization across entire batches")
+        print(f"  Relative time (OpenCV / TSR): {relative_time:.2f}x")
+        print("  TSR uses two extension calls; OpenCV uses an explicit Python loop")
 
     @pytest.mark.skipif(not HAS_OPENCV, reason="OpenCV not available")
     def test_mixed_shapes_batch_functionality(self, performance_test_images):
@@ -635,8 +611,8 @@ class TestBasicPerformance:
         print("  🎯 Key advantages:")
         print(f"    - Single API call handles {unique_input_shapes} input shapes")
         print(f"    - Produces {unique_output_shapes} different output shapes")
-        print("    - No loops needed: tsr.batch_crop_images(mixed_images, mixed_crops)")
-        print("    - vs NumPy: Must write loop for each different shape combination")
+        print("    - One Python call: tsr.batch_crop_images(mixed_images, mixed_crops)")
+        print("    - NumPy requires an explicit Python loop for mixed crop shapes")
 
 
 class TestMemoryEfficiency:
