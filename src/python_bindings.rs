@@ -617,7 +617,7 @@ impl ResizeIterator {
         // of cloning the full resized image during iteration.
         match ndarray::Array3::from_shape_vec((height, width, channels), buffer) {
             Ok(array) => Some(PyArray3::from_owned_array_bound(py, array)),
-            Err(_) => None, // Skip malformed arrays
+            Err(_) => None, // Malformed buffer; end iteration (StopIteration)
         }
     }
 
