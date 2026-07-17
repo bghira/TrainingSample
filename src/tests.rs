@@ -79,6 +79,17 @@ mod cropping_tests {
     }
 
     #[test]
+    fn test_crop_non_contiguous_view() {
+        let img = create_test_image();
+        let strided = img.slice(ndarray::s![.., ..;2, ..]);
+        let result = crop_image_array(&strided, 5, 10, 20, 30).unwrap();
+
+        assert_eq!(result.dim(), (30, 20, 3));
+        assert_eq!(result[[0, 0, 0]], img[[10, 10, 0]]);
+        assert_eq!(result[[29, 19, 2]], img[[39, 48, 2]]);
+    }
+
+    #[test]
     fn test_center_crop_image_array() {
         let img = create_test_image();
         let result = center_crop_image_array(&img.view(), 60, 60).unwrap();
