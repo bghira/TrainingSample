@@ -2,179 +2,136 @@
 
 [![Crates.io](https://img.shields.io/crates/v/trainingsample.svg)](https://crates.io/crates/trainingsample)
 [![PyPI](https://img.shields.io/pypi/v/trainingsample.svg)](https://pypi.org/project/trainingsample/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-TrainingSample provides Rust-backed Python bindings for common image and video preprocessing operations used in ML data pipelines. It combines OpenCV-backed resizing with Rust implementations for batching, cropping, luminance calculation, format conversion, and video helpers.
+Rust image and video operations exposed through Python and Rust APIs.
 
-The project is designed for workloads where Python-side loops and repeated boundary crossings become visible. It is not a blanket replacement for all of `cv2`, and performance depends on image size, batch shape, CPU, OpenCV build, and memory bandwidth.
+| Item | Value |
+|---|---|
+| Python package | `trainingsample` |
+| Rust crate | `trainingsample` |
+| Python version | 3.11 or newer |
+| Python array type | NumPy `uint8` |
+| Image layout | `(height, width, channels)` |
+| Video layout | `(frames, height, width, channels)` |
+| Size tuple order | `(width, height)` |
+| License | MIT |
 
-## install
+## Install
 
 ```bash
-# python
-pip install trainingsample
-
-# rust
+python -m pip install trainingsample
 cargo add trainingsample
 ```
 
-## python usage
+## Python example
 
 ```python
 import numpy as np
 import trainingsample as tsr
 
 images = [
-    np.random.randint(0, 255, (480, 640, 3), dtype=np.uint8)
+    np.random.randint(0, 256, (480, 640, 3), dtype=np.uint8)
     for _ in range(8)
 ]
 
-crop_boxes = [(50, 50, 200, 200)] * len(images)
-cropped = tsr.batch_crop_images(images, crop_boxes)
-
-target_sizes = [(224, 224)] * len(images)
-resized = tsr.batch_resize_images(images, target_sizes)
-
-luminances = tsr.batch_calculate_luminance(resized)
+cropped = tsr.batch_crop_images(
+    images,
+    [(50, 50, 320, 320)] * len(images),
+)
+resized = tsr.batch_resize_images(
+    cropped,
+    [(224, 224)] * len(cropped),
+)
+luminance = tsr.batch_calculate_luminance(resized)
 ```
 
-OpenCV-compatible helpers are also exported for common operations:
+## Python functions
 
-```python
-decoded = tsr.imdecode(image_bytes, tsr.IMREAD_COLOR)
-gray = tsr.cvt_color(decoded, tsr.COLOR_RGB2GRAY)
-edges = tsr.canny(decoded, threshold1=50, threshold2=150)
-resized = tsr.resize(decoded, (224, 224), interpolation=tsr.INTER_LINEAR)
-```
+| Function | Input | Output |
+|---|---|---|
+| `load_image_batch(paths)` | file paths | `list[bytes \| None]` |
+| `batch_crop_images(images, boxes)` | images; `(x, y, width, height)` per image | owned images |
+| `batch_center_crop_images(images, sizes)` | images; target size per image | owned images |
+| `batch_random_crop_images(images, sizes)` | images; target size per image | owned images |
+| `batch_resize_images(images, sizes)` | RGB images; target size per image | owned RGB images |
+| `batch_resize_videos(videos, sizes)` | RGB videos; target size per video | owned RGB videos |
+| `batch_calculate_luminance(images)` | images | `list[float]` |
+| `rgb_to_rgba_optimized(image, alpha)` | RGB image; `uint8` alpha | RGBA image and elapsed time |
+| `rgba_to_rgb_optimized(image)` | RGBA image | RGB image and elapsed time |
 
-## rust usage
+Specialized entry points:
+
+| Function | Constraint |
+|---|---|
+| `batch_crop_images_zero_copy` | C-contiguous input |
+| `batch_center_crop_images_zero_copy` | C-contiguous input |
+| `batch_resize_images_zero_copy` | C-contiguous, three-channel input |
+| `batch_resize_images_iterator` | C-contiguous, three-channel input |
+| `batch_calculate_luminance_zero_copy` | accepts ndarray views |
+
+The compatibility helpers use names such as `imdecode_py`, `cvt_color_py`, and
+`resize_py`. See [the exact Python export table](docs/API_COMPAT_CV2.md).
+
+## Rust example
 
 ```rust
 use ndarray::Array3;
-use trainingsample::{
-    batch_calculate_luminance_arrays, batch_crop_image_arrays, batch_resize_image_arrays,
-};
+use trainingsample::crop_image_array;
 
-let images: Vec<Array3<u8>> = (0..10)
-    .map(|_| Array3::zeros((480, 640, 3)))
-    .collect();
-
-let crop_boxes = vec![(50, 50, 200, 200); 10]; // (x, y, width, height)
-let cropped = batch_crop_image_arrays(&images, &crop_boxes);
-
-let target_sizes = vec![(224, 224); 10]; // (width, height)
-let resized = batch_resize_image_arrays(&images, &target_sizes);
-
-let luminances = batch_calculate_luminance_arrays(&images);
+let image = Array3::<u8>::zeros((480, 640, 3));
+let cropped = crop_image_array(&image.view(), 50, 50, 320, 320).unwrap();
+assert_eq!(cropped.dim(), (320, 320, 3));
 ```
 
-## api reference
+## Implementations
 
-### `batch_crop_images(images, crop_boxes)`
+| Operation | Implementation |
+|---|---|
+| Decode | `image` crate; JPEG, PNG, and WebP features enabled |
+| Crop | Rust row copies for contiguous arrays; ndarray fallback for strided views |
+| Luminance | Rust contiguous fast path; ndarray fallback |
+| Image resize | OpenCV for `batch_resize_images` and named OpenCV resize helpers |
+| Video resize | OpenCV frame resize into an owned four-dimensional output |
+| Color conversion | Rust; SIMD feature used by optimized RGB/RGBA functions |
+| Canny helper | `imageproc` |
 
-- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
-- `crop_boxes`: list of `(x, y, width, height)` tuples
-- returns: list of cropped NumPy arrays
-- notes: output arrays are owned by NumPy without an extra copy from the owned Rust array
+The default Cargo feature set is `simd`. Python wheels are built with
+`python-bindings`, `opencv`, and `simd`; macOS release wheels also enable
+`metal`.
 
-### `batch_center_crop_images(images, target_sizes)`
-
-- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
-- `target_sizes`: list of `(width, height)` tuples
-- returns: list of center-cropped NumPy arrays
-
-### `batch_random_crop_images(images, target_sizes)`
-
-- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
-- `target_sizes`: list of `(width, height)` tuples
-- returns: list of randomly cropped NumPy arrays
-
-### `batch_resize_images(images, target_sizes)`
-
-- `images`: list of NumPy arrays shaped `(H, W, 3)` with `uint8` data
-- `target_sizes`: list of `(width, height)` tuples
-- returns: list of resized NumPy arrays
-- implementation: OpenCV-backed resize with Rust/PyO3 conversion handling
-
-### `batch_calculate_luminance(images)`
-
-- `images`: list of NumPy arrays shaped `(H, W, C)` with `uint8` data
-- returns: list of float luminance values
-- notes: contiguous RGB/RGBA-like arrays use a channel-sum fast path; strided arrays fall back to the general ndarray path
-
-### `batch_resize_videos(videos, target_sizes)`
-
-- `videos`: list of NumPy arrays shaped `(T, H, W, 3)` with `uint8` data
-- `target_sizes`: list of `(width, height)` tuples
-- returns: list of resized video NumPy arrays
-
-## current benchmark snapshot
-
-These numbers are from the local benchmark run after the latest Python-interface optimizations:
+## Source build
 
 ```bash
-.venv/bin/python -m pytest tests/test_performance_benchmarks.py -q -s
-```
-
-Environment: Linux x86_64, CPython 3.13, NumPy 2.3.4, system OpenCV 4.11 through the Rust `opencv` crate. Treat these as a point-in-time reference, not a cross-machine guarantee.
-
-| Benchmark | Before | After | Notes |
-|-----------|--------|-------|-------|
-| Crop batch, 16 images | 22.9 ms | 0.4 ms | Public `batch_crop_images` path |
-| Mixed-shape crop, 8 images | 50.2 ms | 3.3 ms | Mixed input and output sizes |
-| Luminance batch, 4 mixed images | 10.4 ms | 0.6 ms | Now faster than the OpenCV comparison in this run |
-| Mixed-shape luminance, 6 images | 78.3 ms | 3.3 ms | NumPy comparison was 19.4 ms in this run |
-| Complete resize + luminance pipeline | 5.9 ms | 0.6 ms | Four mixed-size inputs to 224x224 |
-
-Pytest-benchmark means from the same suite:
-
-| Benchmark | Mean after |
-|-----------|------------|
-| Center crop | 55.2 us |
-| Resize operations | 353.1 us |
-| Luminance calculation | 417.2 us |
-| Crop operations | 583.8 us |
-| Pipeline | 3.44 ms |
-| Video processing | 2.85 ms |
-
-## architecture
-
-TrainingSample uses different implementations for different operation types:
-
-- Cropping: Rust/ndarray implementation with owned-array transfer into NumPy.
-- Luminance: Rust channel-sum fast path for contiguous arrays, with a general ndarray fallback for non-contiguous inputs.
-- Resize: OpenCV-backed implementation for image quality and mature interpolation behavior.
-- Video resize: OpenCV-backed frame resizing with batched Python binding output.
-- Format conversion: Rust SIMD implementation where the `simd` feature is enabled.
-
-The optimized path generally requires contiguous `uint8` arrays. Views such as `image[:, ::2, :]` remain supported by safe public APIs, but they may use slower fallback paths.
-
-## features
-
-- Python bindings through PyO3 and rust-numpy
-- Batch APIs for images and videos
-- OpenCV-compatible constants and helper functions for common operations
-- Optional SIMD feature for format conversion and selected numeric paths
-- Error handling for invalid dimensions, unsupported channels, and invalid crop bounds
-- Source build support for dynamic or static OpenCV configurations
-
-## building from source
-
-```bash
-pip install maturin
+python -m pip install 'maturin>=1,<2'
 maturin develop --release
 ```
 
-The OpenCV Rust bindings need to find a working OpenCV and Clang installation. If the environment has stale OpenCV or LLVM variables, unset them before building:
+Build and test commands used by CI:
 
 ```bash
-env -u OPENCV_LINK_LIBS -u OPENCV_LINK_PATHS -u OPENCV_INCLUDE_PATHS \
-    -u LIBCLANG_PATH -u LLVM_CONFIG_PATH \
-    maturin develop --release
+cargo fmt --all -- --check
+cargo clippy --all-targets --no-default-features \
+  --features python-bindings,simd,opencv -- -D warnings
+cargo test --no-default-features --features simd,opencv
+python -m pytest -q
 ```
 
-See [docs/BUILDING_STATIC_OPENCV.md](docs/BUILDING_STATIC_OPENCV.md) for static OpenCV bundle notes.
+OpenCV and libclang must be discoverable for source builds with the `opencv`
+feature. Static wheel configuration is documented in
+[docs/BUILDING_STATIC_OPENCV.md](docs/BUILDING_STATIC_OPENCV.md).
 
-## license
+## Documentation
 
-MIT. See [LICENSE](LICENSE).
+- [Benchmark definitions and commands](BENCHMARKS.md)
+- [Python compatibility helpers](docs/API_COMPAT_CV2.md)
+- [Static OpenCV build](docs/BUILDING_STATIC_OPENCV.md)
+
+## Limits
+
+- The Python API is not a drop-in replacement for `cv2`.
+- Crop and resize functions return owned arrays.
+- OpenCV resize paths require three-channel input.
+- Strict zero-copy crop and resize entry points reject non-contiguous input.
+- Runtime depends on input dimensions, batch size, host CPU, memory bandwidth,
+  OpenCV build flags, and OpenCV thread settings.
