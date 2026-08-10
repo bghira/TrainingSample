@@ -47,6 +47,24 @@ class TestImageOperations:
 
         np.testing.assert_array_equal(decoded, image)
 
+    def test_imdecode_rejects_truncated_jpeg(self):
+        """Reject JPEGs whose missing scan data would otherwise be concealed."""
+        y, x = np.indices((512, 512), dtype=np.uint32)
+        image = np.stack(
+            (
+                (x * 31) ^ (y * 17),
+                (x * 13) ^ (y * 29),
+                (x * 7) ^ (y * 37),
+            ),
+            axis=-1,
+        ).astype(np.uint8)
+        encoded = io.BytesIO()
+        Image.fromarray(image).save(encoded, format="JPEG")
+        truncated = encoded.getvalue()[: len(encoded.getvalue()) // 20]
+
+        with pytest.raises(RuntimeError, match="truncated"):
+            tsr.imdecode_py(truncated, 1)
+
     def test_batch_crop_images(self, sample_images):
         """Test batch cropping with custom coordinates."""
         crop_boxes = [(10, 10, 50, 50), (20, 20, 40, 40), (5, 5, 60, 60)]
