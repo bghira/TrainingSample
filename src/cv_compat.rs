@@ -20,6 +20,10 @@ pub mod imdecode {
 
     /// Decode image from byte buffer (equivalent to cv2.imdecode)
     pub fn imdecode(buf: &[u8], flags: ImreadFlags) -> Result<Array3<u8>> {
+        if buf.starts_with(&[0xff, 0xd8]) {
+            validate_jpeg_complete(buf)?;
+        }
+
         let img = image::load_from_memory(buf)
             .map_err(|e| anyhow::anyhow!("Failed to decode image: {}", e))?;
 
@@ -36,6 +40,90 @@ pub mod imdecode {
             }
             ImreadFlags::ImreadUnchanged => dynamic_image_to_ndarray(img),
         }
+    }
+
+    fn validate_jpeg_complete(buf: &[u8]) -> Result<()> {
+        let mut offset = 2;
+        let mut in_entropy_data = false;
+        let mut saw_scan = false;
+
+        while offset < buf.len() {
+            let marker = if in_entropy_data {
+                loop {
+                    while offset < buf.len() && buf[offset] != 0xff {
+                        offset += 1;
+                    }
+                    if offset == buf.len() {
+                        anyhow::bail!("JPEG image is truncated: missing end-of-image marker");
+                    }
+
+                    while offset < buf.len() && buf[offset] == 0xff {
+                        offset += 1;
+                    }
+                    if offset == buf.len() {
+                        anyhow::bail!("JPEG image is truncated: incomplete marker");
+                    }
+
+                    let marker = buf[offset];
+                    offset += 1;
+                    match marker {
+                        0x00 | 0xd0..=0xd7 => continue,
+                        _ => {
+                            in_entropy_data = false;
+                            break marker;
+                        }
+                    }
+                }
+            } else {
+                if buf[offset] != 0xff {
+                    anyhow::bail!("JPEG image is malformed: expected marker");
+                }
+                while offset < buf.len() && buf[offset] == 0xff {
+                    offset += 1;
+                }
+                if offset == buf.len() {
+                    anyhow::bail!("JPEG image is truncated: incomplete marker");
+                }
+
+                let marker = buf[offset];
+                offset += 1;
+                marker
+            };
+
+            match marker {
+                0xd9 if saw_scan => return Ok(()),
+                0xd9 => anyhow::bail!("JPEG image is malformed: end marker precedes scan data"),
+                0x01 | 0xd0..=0xd8 => continue,
+                _ => {
+                    let length_end = offset.checked_add(2).ok_or_else(|| {
+                        anyhow::anyhow!("JPEG image is truncated: invalid segment length")
+                    })?;
+                    if length_end > buf.len() {
+                        anyhow::bail!("JPEG image is truncated: incomplete segment length");
+                    }
+
+                    let segment_length =
+                        usize::from(u16::from_be_bytes([buf[offset], buf[offset + 1]]));
+                    if segment_length < 2 {
+                        anyhow::bail!("JPEG image is malformed: invalid segment length");
+                    }
+
+                    offset = offset.checked_add(segment_length).ok_or_else(|| {
+                        anyhow::anyhow!("JPEG image is truncated: invalid segment length")
+                    })?;
+                    if offset > buf.len() {
+                        anyhow::bail!("JPEG image is truncated: incomplete segment");
+                    }
+
+                    if marker == 0xda {
+                        saw_scan = true;
+                        in_entropy_data = true;
+                    }
+                }
+            }
+        }
+
+        anyhow::bail!("JPEG image is truncated: missing end-of-image marker")
     }
 
     fn dynamic_image_to_ndarray(img: DynamicImage) -> Result<Array3<u8>> {

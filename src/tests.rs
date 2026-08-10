@@ -348,6 +348,22 @@ mod cv_compat_tests {
     use ndarray::Array3;
     use std::io::Cursor;
 
+    fn patterned_jpeg() -> Vec<u8> {
+        let mut encoded = Cursor::new(Vec::new());
+        let rgb = ImageBuffer::from_fn(512, 512, |x, y| {
+            Rgb([
+                (x.wrapping_mul(31) ^ y.wrapping_mul(17)) as u8,
+                (x.wrapping_mul(13) ^ y.wrapping_mul(29)) as u8,
+                (x.wrapping_mul(7) ^ y.wrapping_mul(37)) as u8,
+            ])
+        });
+
+        DynamicImage::ImageRgb8(rgb)
+            .write_to(&mut encoded, ImageFormat::Jpeg)
+            .unwrap();
+        encoded.into_inner()
+    }
+
     #[test]
     fn test_imdecode_detects_jpeg_without_png_hint() {
         let mut encoded = Cursor::new(Vec::new());
@@ -356,6 +372,39 @@ mod cv_compat_tests {
         DynamicImage::ImageRgb8(rgb)
             .write_to(&mut encoded, ImageFormat::Jpeg)
             .unwrap();
+
+        let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadColor).unwrap();
+        assert_eq!(decoded.dim(), (2, 3, 3));
+    }
+
+    #[test]
+    fn test_imdecode_rejects_truncated_jpeg() {
+        let mut truncated = patterned_jpeg();
+        truncated.truncate(truncated.len() / 20);
+
+        let error = imdecode(&truncated, ImreadFlags::ImreadColor).unwrap_err();
+        assert!(error.to_string().contains("truncated"));
+    }
+
+    #[test]
+    fn test_imdecode_does_not_treat_metadata_bytes_as_jpeg_end() {
+        let mut truncated = patterned_jpeg();
+        truncated.splice(2..2, [0xff, 0xe1, 0x00, 0x06, 0xff, 0xd9, 0x12, 0x34]);
+        truncated.truncate(truncated.len() / 20);
+
+        let error = imdecode(&truncated, ImreadFlags::ImreadColor).unwrap_err();
+        assert!(error.to_string().contains("truncated"));
+    }
+
+    #[test]
+    fn test_imdecode_accepts_jpeg_with_trailing_bytes() {
+        let mut encoded = Cursor::new(Vec::new());
+        let rgb = ImageBuffer::from_fn(3, 2, |x, y| Rgb([(x * 40) as u8, (y * 80) as u8, 200]));
+
+        DynamicImage::ImageRgb8(rgb)
+            .write_to(&mut encoded, ImageFormat::Jpeg)
+            .unwrap();
+        encoded.get_mut().extend_from_slice(b"trailing data");
 
         let decoded = imdecode(encoded.get_ref(), ImreadFlags::ImreadColor).unwrap();
         assert_eq!(decoded.dim(), (2, 3, 3));
