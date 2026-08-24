@@ -88,7 +88,7 @@ impl BufferPool {
 
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-pub fn load_image_batch(py: Python, image_paths: Vec<String>) -> PyResult<Vec<PyObject>> {
+pub fn load_image_batch(py: Python, image_paths: Vec<String>) -> PyResult<Vec<Py<PyAny>>> {
     use rayon::prelude::*;
 
     let results: Vec<_> = image_paths
@@ -100,7 +100,7 @@ pub fn load_image_batch(py: Python, image_paths: Vec<String>) -> PyResult<Vec<Py
     for result in results {
         match result {
             Ok(image_data) => {
-                let py_bytes = PyBytes::new_bound(py, &image_data);
+                let py_bytes = PyBytes::new(py, &image_data);
                 py_results.push(py_bytes.into_any().unbind());
             }
             Err(_) => {
@@ -155,7 +155,7 @@ pub unsafe fn batch_crop_images_zero_copy<'py>(
 
         let array = ndarray::Array3::from_shape_vec((height, width, channels), output_buffer)
             .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
-        let py_array = PyArray3::from_owned_array_bound(py, array);
+        let py_array = PyArray3::from_owned_array(py, array);
         py_results.push(py_array);
     }
 
@@ -206,7 +206,7 @@ pub unsafe fn batch_center_crop_images_zero_copy<'py>(
                 .map_err(|e| {
                     pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e))
                 })?;
-        let py_array = PyArray3::from_owned_array_bound(py, array);
+        let py_array = PyArray3::from_owned_array(py, array);
         py_results.push(py_array);
     }
 
@@ -390,10 +390,10 @@ pub fn batch_resize_images_zero_copy<'py>(
     // Convert to PyArray3 and return as Python list
     let py_results: Vec<Bound<'py, PyArray3<u8>>> = results
         .into_iter()
-        .map(|array| PyArray3::from_owned_array_bound(py, array))
+        .map(|array| PyArray3::from_owned_array(py, array))
         .collect();
 
-    Ok(PyList::new_bound(py, py_results).into_any())
+    Ok(PyList::new(py, py_results)?.into_any())
 }
 
 /// Ultra-fast OpenCV-powered resize using zero-copy Mat headers
@@ -552,7 +552,7 @@ fn resize_single_image_direct<'py>(
     })?;
 
     // DIRECT return - no Vec wrapper overhead!
-    Ok(PyArray3::from_owned_array_bound(py, result))
+    Ok(PyArray3::from_owned_array(py, result))
 }
 
 #[cfg(not(feature = "opencv"))]
@@ -578,12 +578,12 @@ fn is_tuple_or_list_of_two(obj: &Bound<PyAny>) -> bool {
     use pyo3::types::{PyList, PyTuple};
 
     // Check if it's a tuple of length 2
-    if let Ok(tuple) = obj.downcast::<PyTuple>() {
+    if let Ok(tuple) = obj.cast::<PyTuple>() {
         return tuple.len() == 2;
     }
 
     // Check if it's a list of length 2 containing numbers (not nested lists)
-    if let Ok(list) = obj.downcast::<PyList>() {
+    if let Ok(list) = obj.cast::<PyList>() {
         if list.len() == 2 {
             // Check if first element is a number (not a nested list/tuple)
             if let Ok(first) = list.get_item(0) {
@@ -616,7 +616,7 @@ impl ResizeIterator {
         // Transfer the completed allocation directly into the ndarray instead
         // of cloning the full resized image during iteration.
         match ndarray::Array3::from_shape_vec((height, width, channels), buffer) {
-            Ok(array) => Some(PyArray3::from_owned_array_bound(py, array)),
+            Ok(array) => Some(PyArray3::from_owned_array(py, array)),
             Err(_) => None, // Malformed buffer; end iteration (StopIteration)
         }
     }
@@ -872,7 +872,7 @@ pub fn batch_crop_images<'py>(
         let img_view = image.as_array();
         match crop_image_array(&img_view, x, y, width, height) {
             Ok(cropped) => {
-                let py_array = PyArray3::from_owned_array_bound(py, cropped);
+                let py_array = PyArray3::from_owned_array(py, cropped);
                 py_results.push(py_array);
             }
             Err(e) => {
@@ -905,7 +905,7 @@ pub fn batch_center_crop_images<'py>(
         let img_view = image.as_array();
         match crate::cropping::center_crop_image_array(&img_view, target_width, target_height) {
             Ok(cropped) => {
-                let py_array = PyArray3::from_owned_array_bound(py, cropped);
+                let py_array = PyArray3::from_owned_array(py, cropped);
                 py_results.push(py_array);
             }
             Err(e) => {
@@ -932,7 +932,7 @@ pub fn batch_random_crop_images<'py>(
         let img_view = image.as_array();
         match random_crop_image_array(&img_view, target_width, target_height) {
             Ok(cropped) => {
-                let py_array = PyArray3::from_owned_array_bound(py, cropped);
+                let py_array = PyArray3::from_owned_array(py, cropped);
                 py_results.push(py_array);
             }
             Err(e) => {
@@ -958,7 +958,7 @@ pub fn batch_calculate_luminance(
 
     let image_views: Vec<_> = images.iter().map(|image| image.as_array()).collect();
 
-    Ok(py.allow_threads(|| {
+    Ok(py.detach(|| {
         image_views
             .par_iter()
             .map(crate::luminance::calculate_luminance_array_sequential)
@@ -984,7 +984,7 @@ pub fn rgb_to_rgba_optimized<'py>(
     let rgba_array = ndarray::Array3::from_shape_vec((height, width, 4), rgba_data)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
 
-    let py_array = PyArray3::from_owned_array_bound(py, rgba_array);
+    let py_array = PyArray3::from_owned_array(py, rgba_array);
     Ok((py_array, metrics.throughput_mpixels_per_sec))
 }
 
@@ -1013,7 +1013,7 @@ pub fn rgba_to_rgb_optimized<'py>(
     let rgb_array = ndarray::Array3::from_shape_vec((height, width, 3), rgb_data)
         .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
 
-    let py_array = PyArray3::from_owned_array_bound(py, rgb_array);
+    let py_array = PyArray3::from_owned_array(py, rgb_array);
     Ok((py_array, metrics.throughput_mpixels_per_sec))
 }
 
@@ -1057,7 +1057,7 @@ pub fn batch_resize_images<'py>(
         Ok(resized_images) => {
             let py_results: Vec<_> = resized_images
                 .into_iter()
-                .map(|resized| PyArray3::from_owned_array_bound(py, resized))
+                .map(|resized| PyArray3::from_owned_array(py, resized))
                 .collect();
             Ok(py_results)
         }
@@ -1095,7 +1095,7 @@ pub fn batch_resize_videos<'py>(
         Ok(resized_videos) => {
             let py_results: Vec<_> = resized_videos
                 .into_iter()
-                .map(|resized| PyArray4::from_owned_array_bound(py, resized))
+                .map(|resized| PyArray4::from_owned_array(py, resized))
                 .collect();
             Ok(py_results)
         }
@@ -1134,7 +1134,7 @@ pub fn resize_bilinear_opencv<'py>(
 
     match resize_bilinear_opencv(&image_array, target_width, target_height) {
         Ok(resized) => {
-            let py_array = PyArray3::from_owned_array_bound(py, resized);
+            let py_array = PyArray3::from_owned_array(py, resized);
             Ok(py_array)
         }
         Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -1158,7 +1158,7 @@ pub fn resize_lanczos4_opencv<'py>(
 
     match resize_lanczos4_opencv(&image_array, target_width, target_height) {
         Ok(resized) => {
-            let py_array = PyArray3::from_owned_array_bound(py, resized);
+            let py_array = PyArray3::from_owned_array(py, resized);
             Ok(py_array)
         }
         Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -1218,11 +1218,11 @@ pub fn imdecode_py<'py>(
         }
     };
 
-    let decoded = py.allow_threads(move || imdecode(&buf, imread_flags));
+    let decoded = py.detach(move || imdecode(&buf, imread_flags));
 
     match decoded {
         Ok(image) => {
-            let py_array = PyArray3::from_owned_array_bound(py, image);
+            let py_array = PyArray3::from_owned_array(py, image);
             Ok(py_array)
         }
         Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -1258,7 +1258,7 @@ pub fn cvt_color_py<'py>(
     let src_array = src.as_array();
     match cvt_color(&src_array, color_code) {
         Ok(converted) => {
-            let py_array = PyArray3::from_owned_array_bound(py, converted);
+            let py_array = PyArray3::from_owned_array(py, converted);
             Ok(py_array)
         }
         Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -1281,7 +1281,7 @@ pub fn canny_py<'py>(
     let image_array = image.as_array();
     match canny(&image_array, threshold1, threshold2) {
         Ok(edges) => {
-            let py_array = PyArray3::from_owned_array_bound(py, edges);
+            let py_array = PyArray3::from_owned_array(py, edges);
             Ok(py_array)
         }
         Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -1317,7 +1317,7 @@ pub fn resize_py<'py>(
     let src_array = src.as_array();
     match resize(&src_array, dsize, interp) {
         Ok(resized) => {
-            let py_array = PyArray3::from_owned_array_bound(py, resized);
+            let py_array = PyArray3::from_owned_array(py, resized);
             Ok(py_array)
         }
         Err(e) => Err(pyo3::exceptions::PyRuntimeError::new_err(format!(
@@ -1328,7 +1328,7 @@ pub fn resize_py<'py>(
 }
 
 #[cfg(feature = "python-bindings")]
-#[pyclass]
+#[pyclass(unsendable)]
 pub struct PyVideoCapture {
     inner: VideoCapture,
     temp_path: Option<TempPath>,
@@ -1419,7 +1419,7 @@ impl PyVideoCapture {
     fn read<'py>(&mut self, py: Python<'py>) -> PyResult<(bool, Option<Bound<'py, PyArray3<u8>>>)> {
         let (ret, frame) = self.inner.read();
         if let Some(frame_data) = frame {
-            let py_array = PyArray3::from_owned_array_bound(py, frame_data);
+            let py_array = PyArray3::from_owned_array(py, frame_data);
             Ok((ret, Some(py_array)))
         } else {
             Ok((ret, None))
@@ -1639,7 +1639,7 @@ impl PyBatchProcessor {
             Ok(results) => {
                 let py_results: Vec<_> = results
                     .into_iter()
-                    .map(|result| PyArray3::from_owned_array_bound(py, result))
+                    .map(|result| PyArray3::from_owned_array(py, result))
                     .collect();
                 Ok(py_results)
             }
@@ -1679,7 +1679,7 @@ impl PyBatchProcessor {
             Ok(results) => {
                 let py_results: Vec<_> = results
                     .into_iter()
-                    .map(|result| PyArray3::from_owned_array_bound(py, result))
+                    .map(|result| PyArray3::from_owned_array(py, result))
                     .collect();
                 Ok(py_results)
             }
@@ -1704,7 +1704,7 @@ impl PyBatchProcessor {
             Ok(results) => {
                 let py_results: Vec<_> = results
                     .into_iter()
-                    .map(|result| PyArray3::from_owned_array_bound(py, result))
+                    .map(|result| PyArray3::from_owned_array(py, result))
                     .collect();
                 Ok(py_results)
             }
@@ -1782,7 +1782,7 @@ impl PyBatchProcessor {
             Ok(results) => {
                 let py_results: Vec<_> = results
                     .into_iter()
-                    .map(|result| PyArray3::from_owned_array_bound(py, result))
+                    .map(|result| PyArray3::from_owned_array(py, result))
                     .collect();
                 Ok(py_results)
             }
@@ -1903,7 +1903,7 @@ impl PyTrueBatchProcessor {
             Ok(results) => {
                 let py_results: Vec<_> = results
                     .into_iter()
-                    .map(|result| PyArray3::from_owned_array_bound(py, result))
+                    .map(|result| PyArray3::from_owned_array(py, result))
                     .collect();
                 Ok(py_results)
             }
@@ -1939,7 +1939,7 @@ impl PyTrueBatchProcessor {
             Ok(results) => {
                 let py_results: Vec<_> = results
                     .into_iter()
-                    .map(|result| PyArray3::from_owned_array_bound(py, result))
+                    .map(|result| PyArray3::from_owned_array(py, result))
                     .collect();
                 Ok(py_results)
             }
