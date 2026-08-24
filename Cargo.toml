@@ -5,7 +5,7 @@ image = {version = "0.25", features = ["png", "jpeg", "webp"]}
 imageproc = "0.25"
 # Metal GPU acceleration
 metal = {version = "0.27", optional = true}
-ndarray = "0.16"
+ndarray = "0.17"
 num_cpus = "1.16"
 numpy = {version = "0.27", optional = true}
 objc = {version = "0.2", optional = true}
