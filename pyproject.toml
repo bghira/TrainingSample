@@ -18,7 +18,7 @@ description = "High-performance Rust reimplementation of GIL-blocking video/imag
 license = {text = "MIT"}
 name = "trainingsample"
 requires-python = ">=3.11"
-version = "0.3.1"
+version = "0.3.2"
 
 [project.optional-dependencies]
 dev = ["pytest>=6.0", "pytest-benchmark", "maturin>=1.9.5,<2.0", "pre-commit"]
