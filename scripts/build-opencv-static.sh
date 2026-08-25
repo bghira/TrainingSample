@@ -135,7 +135,12 @@ fi
 
 # Configure CMake build
 echo "Configuring CMake build..."
-export PKG_CONFIG_PATH="${FFMPEG_INSTALL_DIR}/lib/pkgconfig:${PKG_CONFIG_PATH:-}"
+export PKG_CONFIG_PATH="${FFMPEG_INSTALL_DIR}/lib/pkgconfig"
+export PKG_CONFIG_LIBDIR="${FFMPEG_INSTALL_DIR}/lib/pkgconfig"
+
+# Always configure from a clean CMake cache. A failed build may leave cached
+# host dependency paths behind, which can otherwise poison subsequent retries.
+rm -rf "${BUILD_DIR}/build"
 
 CMAKE_ARGS=(
     -S "opencv-${OPENCV_VERSION}"
@@ -178,6 +183,15 @@ CMAKE_ARGS=(
     -DWITH_TBB=OFF
     -DCMAKE_INSTALL_PREFIX="${INSTALL_DIR}"
 )
+
+# Keep Homebrew libraries from leaking into the pinned static bundle. In
+# particular, OpenCV must compile against the FFmpeg headers built above, not
+# a newer Homebrew FFmpeg while linking the pinned static archives.
+if [[ "$(uname)" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+    CMAKE_ARGS+=(
+        -DCMAKE_IGNORE_PREFIX_PATH="$(brew --prefix)"
+    )
+fi
 
 # Disable Carotene (ARM NEON optimizations) to avoid undefined symbol errors
 # when statically linking. Carotene requires runtime library that isn't bundled.

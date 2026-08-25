@@ -52,6 +52,7 @@ Cargo.lock
 # Static OpenCV bundle (built in CI, not committed)
 third_party/
 opencv-build-tmp/
+ffmpeg-build-tmp/
 
 files.tbz
 */config/auth.json
