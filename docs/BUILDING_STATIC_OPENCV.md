@@ -32,6 +32,17 @@ C and C++ compilers
 CI also installs clang, libclang, LLVM, nasm, and yasm before running the
 script.
 
+On macOS, install the same build dependencies used by CI before running the
+script:
+
+```bash
+brew install llvm cmake nasm pkg-config
+```
+
+The script isolates its pinned FFmpeg build from other Homebrew libraries, so
+an existing Homebrew OpenCV or FFmpeg installation does not affect the static
+bundle.
+
 ## Output
 
 | Path | Contents |

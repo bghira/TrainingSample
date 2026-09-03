@@ -108,7 +108,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12", "3.13"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
     - uses: actions/checkout@v4
@@ -387,7 +387,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
-        python: ["3.11", "3.12", "3.13"]
+        python: ["3.11", "3.12", "3.13", "3.14"]
 
     steps:
     - uses: actions/checkout@v4
@@ -434,7 +434,6 @@ jobs:
         container: off
         manylinux: manylinux_2_39
       env:
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
         LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
         LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4

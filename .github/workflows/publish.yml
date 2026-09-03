@@ -25,6 +25,10 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_35
             python: '3.13'
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.14'
           # Ubuntu 24.04 (libc 2.39)
           - os: ubuntu-24.04
             target: x86_64
@@ -38,6 +42,10 @@ jobs:
             target: x86_64
             manylinux: manylinux_2_39
             python: '3.13'
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.14'
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -104,8 +112,6 @@ jobs:
         container: off
         manylinux: ${{ matrix.manylinux }}
       env:
-        # Use stable ABI for forward compatibility
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
         # LLVM for opencv-rust bindings (from earlier install step)
         LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
         LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
@@ -135,7 +141,7 @@ jobs:
     runs-on: ubuntu-24.04-arm
     strategy:
       matrix:
-        python: ['3.11', '3.12', '3.13']
+        python: ['3.11', '3.12', '3.13', '3.14']
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -186,8 +192,6 @@ jobs:
         container: off
         manylinux: manylinux_2_39
       env:
-        # Use stable ABI for forward compatibility
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
         # LLVM for opencv-rust bindings (from earlier install step)
         LIBCLANG_PATH: ${{ env.LIBCLANG_PATH }}
         LLVM_CONFIG_PATH: ${{ env.LLVM_CONFIG_PATH }}
@@ -217,7 +221,7 @@ jobs:
     strategy:
       matrix:
         target: [aarch64]
-        python: ['3.11', '3.12', '3.13']
+        python: ['3.11', '3.12', '3.13', '3.14']
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
@@ -251,8 +255,6 @@ jobs:
         args: --release --out dist -i python --no-default-features --features python-bindings,simd,opencv,metal
         sccache: 'false'
       env:
-        # Use stable ABI for forward compatibility
-        PYO3_USE_ABI3_FORWARD_COMPATIBILITY: '1'
         # OpenCV static linking configuration
         OPENCV_INCLUDE_PATHS: ${{ github.workspace }}/third_party/opencv-static/include/opencv4
         OPENCV_LINK_PATHS: ${{ github.workspace }}/third_party/opencv-static/lib
@@ -306,6 +308,11 @@ jobs:
             manylinux: manylinux_2_35
             python: '3.13'
             artifact_name: wheels-ubuntu-22.04-x86_64-py3.13
+          - os: ubuntu-22.04
+            target: x86_64
+            manylinux: manylinux_2_35
+            python: '3.14'
+            artifact_name: wheels-ubuntu-22.04-x86_64-py3.14
           # Ubuntu 24.04 (libc 2.39)
           - os: ubuntu-24.04
             target: x86_64
@@ -322,6 +329,11 @@ jobs:
             manylinux: manylinux_2_39
             python: '3.13'
             artifact_name: wheels-ubuntu-24.04-x86_64-py3.13
+          - os: ubuntu-24.04
+            target: x86_64
+            manylinux: manylinux_2_39
+            python: '3.14'
+            artifact_name: wheels-ubuntu-24.04-x86_64-py3.14
           # Linux aarch64 (DGX Spark / GB10)
           - os: ubuntu-24.04-arm
             target: aarch64
@@ -338,6 +350,11 @@ jobs:
             manylinux: manylinux_2_39
             python: '3.13'
             artifact_name: wheels-linux-aarch64-py3.13
+          - os: ubuntu-24.04-arm
+            target: aarch64
+            manylinux: manylinux_2_39
+            python: '3.14'
+            artifact_name: wheels-linux-aarch64-py3.14
           # macOS aarch64
           - os: macos-latest
             target: aarch64
@@ -354,6 +371,11 @@ jobs:
             manylinux: ''
             python: '3.13'
             artifact_name: wheels-macos-latest-aarch64-py3.13
+          - os: macos-latest
+            target: aarch64
+            manylinux: ''
+            python: '3.14'
+            artifact_name: wheels-macos-latest-aarch64-py3.14
     steps:
     - uses: actions/download-artifact@v4
       with:
