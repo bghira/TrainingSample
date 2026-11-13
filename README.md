@@ -103,7 +103,7 @@ The default Cargo feature set is `simd`. Python wheels are built with
 ## Source build
 
 ```bash
-python -m pip install 'maturin>=1,<2'
+python -m pip install 'maturin>=1.16,<2'
 maturin develop --release
 ```
 
