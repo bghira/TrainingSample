@@ -2,6 +2,7 @@
 
 import gc
 import importlib.util
+import statistics
 import threading
 import time
 
@@ -213,42 +214,49 @@ class TestBasicPerformance:
                 f"{time_ratio:.2f} vs {max_acceptable_ratio:.2f}"
             )
 
-    def test_luminance_performance_comprehensive(self, performance_test_images):
-        """Test luminance performance across different image sizes and batch sizes."""
-        # Test with larger images where parallelism should clearly win
+    def test_luminance_performance_comprehensive(self):
+        """Check large batches for correctness and severe scaling regressions."""
+        rng = np.random.default_rng(0)
         large_images = [
-            np.random.randint(0, 255, (1024, 1024, 3), dtype=np.uint8)
-            for _ in range(16)
+            rng.integers(0, 256, (1024, 1024, 3), dtype=np.uint8) for _ in range(16)
+        ]
+        expected = [
+            image.mean(axis=(0, 1)) @ np.array([0.299, 0.587, 0.114])
+            for image in large_images
         ]
 
-        # Test scaling with larger images (should show good parallelism)
         batch_sizes = [1, 4, 8, 16]
-        times = []
+        samples = {size: [] for size in batch_sizes}
 
         for batch_size in batch_sizes:
-            batch = large_images[:batch_size]
-            # Warm up
-            tsr.batch_calculate_luminance(batch)
+            # Validate every batch and warm the Rayon pool before measuring.
+            actual = tsr.batch_calculate_luminance(large_images[:batch_size])
+            np.testing.assert_allclose(actual, expected[:batch_size], rtol=0, atol=1e-6)
 
-            start = time.perf_counter()
-            for _ in range(3):  # Multiple iterations for stability
-                tsr.batch_calculate_luminance(batch)
-            elapsed = (time.perf_counter() - start) / 3
-            times.append(elapsed)
+        # Interleave sizes and alternate their order so host load changes do not
+        # consistently penalize the largest batch. Medians reject isolated pauses.
+        iterations = 5
+        for round_index in range(7):
+            order = batch_sizes if round_index % 2 == 0 else batch_sizes[::-1]
+            for batch_size in order:
+                batch = large_images[:batch_size]
+                start = time.perf_counter()
+                for _ in range(iterations):
+                    tsr.batch_calculate_luminance(batch)
+                samples[batch_size].append((time.perf_counter() - start) / iterations)
+        times = [statistics.median(samples[size]) for size in batch_sizes]
 
-        # With large images, parallelism should show clear benefits
         for i in range(1, len(batch_sizes)):
             scale_factor = batch_sizes[i] / batch_sizes[i - 1]
             time_ratio = times[i] / times[i - 1]
 
-            # Even with larger work, parallel overhead exists for small batches
-            # Look for reasonable scaling, not perfect scaling
-            max_acceptable_ratio = (
-                scale_factor * 1.2 if batch_sizes[i] > 4 else scale_factor * 1.8
-            )
+            # Shared runners offer no guaranteed parallel speedup, and larger
+            # batches can exceed CPU cache capacity. Keep the same broad guard
+            # as the small-image test: at most twice the per-image cost.
+            max_acceptable_ratio = scale_factor * 2.0
 
             assert time_ratio < max_acceptable_ratio, (
-                f"Large images batch size {batch_sizes[i]} should scale reasonably: "
+                f"Large images batch size {batch_sizes[i]} scaling regressed: "
                 f"{time_ratio:.2f} vs {max_acceptable_ratio:.2f}"
             )
 
