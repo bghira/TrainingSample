@@ -1,8 +1,5 @@
 use ndarray::ArrayView3;
 
-#[cfg(feature = "simd")]
-use wide::*;
-
 /// High-performance SIMD RGB↔RGBA conversions optimized for Metal GPU operations
 /// This addresses the critical bottleneck in Metal GPU texture upload/download
 
@@ -49,74 +46,25 @@ pub fn rgb_to_rgba_simd(
     }
 
     let total_pixels = height * width;
-    let mut rgba_data = Vec::with_capacity(total_pixels * 4);
-
-    // Process in chunks of 8 pixels for optimal SIMD utilization
+    let image = image.as_standard_layout();
+    let mut rgba_data = vec![alpha_value; total_pixels * 4];
     const SIMD_WIDTH: usize = 8;
-    let pixels_per_chunk = SIMD_WIDTH;
-    let _alpha_vec = u8x32::splat(alpha_value);
 
-    let mut processed = 0;
-
-    // Process full SIMD chunks
-    for y in 0..height {
-        let row_start = y * width * 3;
-        let pixels_in_row = width;
-        let chunks = pixels_in_row / pixels_per_chunk;
-
-        for chunk in 0..chunks {
-            let pixel_offset = chunk * pixels_per_chunk;
-            let rgb_offset = row_start + pixel_offset * 3;
-
-            // Load 8 RGB pixels (24 bytes) using SIMD
-            // This is the critical optimization - batch loading RGB triplets
-            unsafe {
-                let rgb_ptr = image.as_ptr().add(rgb_offset);
-
-                // Load RGB data in groups of 8 pixels = 24 bytes
-                let rgb_chunk = std::slice::from_raw_parts(rgb_ptr, 24);
-
-                // Convert RGB to RGBA using SIMD shuffle operations
-                // R0G0B0 R1G1B1 R2G2B2 R3G3B3 R4G4B4 R5G5B5 R6G6B6 R7G7B7
-                // to: R0G0B0A0 R1G1B1A1 R2G2B2A2 R3G3B3A3 R4G4B4A4 R5G5B5A5 R6G6B6A6 R7G7B7A7
-
-                let rgba_chunk = rgba_data.spare_capacity_mut();
-                let rgba_ptr = rgba_chunk.as_mut_ptr() as *mut u8;
-                let rgba_slice = std::slice::from_raw_parts_mut(rgba_ptr.add(processed * 4), 32);
-
-                // Optimized RGB→RGBA conversion with SIMD patterns
-                for i in 0..pixels_per_chunk {
-                    let r = rgb_chunk[i * 3];
-                    let g = rgb_chunk[i * 3 + 1];
-                    let b = rgb_chunk[i * 3 + 2];
-
-                    rgba_slice[i * 4] = r;
-                    rgba_slice[i * 4 + 1] = g;
-                    rgba_slice[i * 4 + 2] = b;
-                    rgba_slice[i * 4 + 3] = alpha_value;
-                }
-
-                processed += pixels_per_chunk;
-            }
+    // Keep every output byte initialized, including tails shorter than eight
+    // pixels. Mixing writes to spare capacity with Vec::push overwrites earlier
+    // pixels and can move subsequent writes beyond the allocation.
+    for (rgb_chunk, rgba_chunk) in image
+        .as_slice()
+        .unwrap()
+        .chunks(SIMD_WIDTH * 3)
+        .zip(rgba_data.chunks_mut(SIMD_WIDTH * 4))
+    {
+        for (rgb, rgba) in rgb_chunk
+            .chunks_exact(3)
+            .zip(rgba_chunk.chunks_exact_mut(4))
+        {
+            rgba[..3].copy_from_slice(rgb);
         }
-
-        // Handle remaining pixels in the row (scalar fallback)
-        let remaining = pixels_in_row % pixels_per_chunk;
-        for i in 0..remaining {
-            let pixel_idx = chunks * pixels_per_chunk + i;
-            let rgb_idx = row_start + pixel_idx * 3;
-
-            rgba_data.push(image.as_slice().unwrap()[rgb_idx]); // R
-            rgba_data.push(image.as_slice().unwrap()[rgb_idx + 1]); // G
-            rgba_data.push(image.as_slice().unwrap()[rgb_idx + 2]); // B
-            rgba_data.push(alpha_value); // A
-            processed += 1;
-        }
-    }
-
-    // Fix the length after unsafe operations
-    unsafe {
-        rgba_data.set_len(total_pixels * 4);
     }
 
     let elapsed = start.elapsed().as_nanos() as u64;

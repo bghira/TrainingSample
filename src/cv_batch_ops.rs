@@ -43,7 +43,7 @@ impl BatchProcessor {
         if self.use_parallel && buffers.len() >= self.chunk_size {
             // Parallel processing for large batches
             buffers
-                .par_chunks(self.chunk_size)
+                .par_chunks(self.chunk_size.max(1))
                 .map(|chunk| {
                     chunk
                         .iter()
@@ -81,7 +81,7 @@ impl BatchProcessor {
         if self.use_parallel && images.len() >= self.chunk_size {
             // Parallel batch processing - major performance win for large batches
             let parallel_results: Result<Vec<Vec<Array3<u8>>>> = images
-                .par_chunks(self.chunk_size)
+                .par_chunks(self.chunk_size.max(1))
                 .map(|chunk| {
                     let mut chunk_results = Vec::with_capacity(chunk.len());
                     for image in chunk {
@@ -140,23 +140,22 @@ impl BatchProcessor {
         let size_groups: Vec<_> = size_groups.into_iter().collect();
 
         if self.use_parallel && images.len() >= self.chunk_size {
-            let parallel_results: Result<Vec<()>> = size_groups
+            let groups: Result<Vec<Vec<_>>> = size_groups
                 .par_iter()
-                .map(|((width, height), indices)| {
-                    // Process all images of this target size together
-                    for &idx in indices {
-                        let resized = resize(&images[idx], (*width, *height), interpolation)?;
-                        // Note: This is safe because each thread processes different indices
-                        unsafe {
-                            let ptr = results.as_ptr() as *mut Array3<u8>;
-                            ptr.add(idx).write(resized);
-                        }
-                    }
-                    Ok(())
+                .map(|(size, indices)| {
+                    indices
+                        .iter()
+                        .map(|&idx| {
+                            resize(&images[idx], *size, interpolation).map(|resized| (idx, resized))
+                        })
+                        .collect()
                 })
                 .collect();
-
-            parallel_results?;
+            for group in groups? {
+                for (idx, resized) in group {
+                    results[idx] = resized;
+                }
+            }
         } else {
             // Sequential processing
             for ((width, height), indices) in size_groups {
@@ -187,7 +186,7 @@ impl BatchProcessor {
         if self.use_parallel && images.len() >= self.chunk_size {
             // Parallel processing
             let parallel_results: Result<Vec<Vec<Array3<u8>>>> = images
-                .par_chunks(self.chunk_size)
+                .par_chunks(self.chunk_size.max(1))
                 .map(|chunk| {
                     chunk
                         .iter()
@@ -226,9 +225,9 @@ impl BatchProcessor {
 
         // Pipeline processing in chunks for optimal memory usage
         let chunk_size = if self.use_parallel {
-            self.chunk_size
+            self.chunk_size.max(1)
         } else {
-            image_buffers.len().min(32) // Process in smaller chunks for memory efficiency
+            image_buffers.len().clamp(1, 32) // Process in smaller chunks for memory efficiency
         };
 
         let mut final_results = Vec::with_capacity(image_buffers.len());

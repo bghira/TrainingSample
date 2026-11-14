@@ -731,6 +731,10 @@ pub mod imgproc {
             anyhow::bail!("Resize only supports 3-channel images");
         }
 
+        if height == 0 || width == 0 || dsize.0 == 0 || dsize.1 == 0 {
+            anyhow::bail!("Resize dimensions must be greater than zero");
+        }
+
         // Convert to image crate format
         let mut img_buffer = ImageBuffer::new(width as u32, height as u32);
         for y in 0..height {
@@ -745,16 +749,16 @@ pub mod imgproc {
         // Resize based on interpolation method
         let resized = match interpolation {
             ResizeInterpolation::InterLinear => {
-                dynamic_img.resize(dsize.0, dsize.1, image::imageops::FilterType::Triangle)
+                dynamic_img.resize_exact(dsize.0, dsize.1, image::imageops::FilterType::Triangle)
             }
             ResizeInterpolation::InterCubic => {
-                dynamic_img.resize(dsize.0, dsize.1, image::imageops::FilterType::CatmullRom)
+                dynamic_img.resize_exact(dsize.0, dsize.1, image::imageops::FilterType::CatmullRom)
             }
             ResizeInterpolation::InterLanczos4 => {
-                dynamic_img.resize(dsize.0, dsize.1, image::imageops::FilterType::Lanczos3)
+                dynamic_img.resize_exact(dsize.0, dsize.1, image::imageops::FilterType::Lanczos3)
             }
             ResizeInterpolation::InterNearest => {
-                dynamic_img.resize(dsize.0, dsize.1, image::imageops::FilterType::Nearest)
+                dynamic_img.resize_exact(dsize.0, dsize.1, image::imageops::FilterType::Nearest)
             }
         };
 
