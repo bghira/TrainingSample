@@ -6,11 +6,11 @@ use numpy::{PyArray3, PyArray4, PyReadonlyArray3, PyReadonlyArray4};
 use pyo3::prelude::*;
 #[cfg(feature = "python-bindings")]
 use pyo3::types::{PyAny, PyAnyMethods, PyBytes};
-#[cfg(feature = "python-bindings")]
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
 use std::collections::VecDeque;
 #[cfg(feature = "python-bindings")]
 use std::io::Write;
-#[cfg(feature = "python-bindings")]
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
 use std::sync::{Arc, Mutex};
 #[cfg(feature = "python-bindings")]
 use tempfile::TempPath;
@@ -28,9 +28,10 @@ use crate::opencv_ops::OpenCVBatchProcessor;
 #[cfg(feature = "python-bindings")]
 use crate::true_batch_ops::{ColorConversion, TrueBatchProcessor};
 
-#[cfg(feature = "python-bindings")]
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
 static BUFFER_POOL: std::sync::OnceLock<Arc<Mutex<BufferPool>>> = std::sync::OnceLock::new();
 
+#[cfg(feature = "opencv")]
 fn get_buffer_pool() -> &'static Arc<Mutex<BufferPool>> {
     BUFFER_POOL.get_or_init(|| Arc::new(Mutex::new(BufferPool::new())))
 }
@@ -47,12 +48,41 @@ fn ensure_c_contiguous(image: &ndarray::ArrayView3<'_, u8>, operation: &str) -> 
     Ok(())
 }
 
-#[cfg(feature = "python-bindings")]
+#[cfg(feature = "opencv")]
+fn validate_resize_shape(source: (usize, usize, usize), target: (usize, usize)) -> PyResult<()> {
+    let (height, width, channels) = source;
+    if channels != 3 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Only 3-channel RGB images are supported",
+        ));
+    }
+    for dimension in [height, width, target.0, target.1] {
+        if dimension == 0 || dimension > i32::MAX as usize {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "Resize dimensions must be positive and fit OpenCV's i32 range",
+            ));
+        }
+    }
+    if target
+        .0
+        .checked_mul(target.1)
+        .and_then(|pixels| pixels.checked_mul(channels))
+        .filter(|&bytes| bytes <= isize::MAX as usize)
+        .is_none()
+    {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Resize output is too large",
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
 struct BufferPool {
     pools: std::collections::HashMap<(usize, usize, usize), VecDeque<Vec<u8>>>,
 }
 
-#[cfg(feature = "python-bindings")]
+#[cfg(all(feature = "python-bindings", feature = "opencv"))]
 impl BufferPool {
     fn new() -> Self {
         Self {
@@ -115,102 +145,28 @@ pub fn load_image_batch(py: Python, image_paths: Vec<String>) -> PyResult<Vec<Py
 
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-pub unsafe fn batch_crop_images_zero_copy<'py>(
+pub fn batch_crop_images_zero_copy<'py>(
     py: Python<'py>,
     images: Vec<PyReadonlyArray3<u8>>,
     crop_boxes: Vec<(usize, usize, usize, usize)>,
 ) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
-    let batch_size = images.len();
-    if batch_size != crop_boxes.len() {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            "Images and crop_boxes length mismatch",
-        ));
+    for image in &images {
+        ensure_c_contiguous(&image.as_array(), "batch_crop_images_zero_copy")?;
     }
-
-    let mut py_results = Vec::with_capacity(batch_size);
-    let mut pool = get_buffer_pool().lock().unwrap();
-
-    for (image, &(x, y, width, height)) in images.iter().zip(crop_boxes.iter()) {
-        let img_view = image.as_array();
-        ensure_c_contiguous(&img_view, "batch_crop_images_zero_copy")?;
-        let (src_height, src_width, channels) = img_view.dim();
-
-        if x + width > src_width || y + height > src_height {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                "Crop coordinates out of bounds",
-            ));
-        }
-
-        let mut output_buffer = pool.get_buffer(height, width, channels);
-
-        let src_ptr = img_view.as_ptr();
-        let dst_ptr = output_buffer.as_mut_ptr();
-
-        crate::cropping::crop_raw_buffer(
-            src_ptr,
-            (src_height, src_width, channels),
-            dst_ptr,
-            (y, x, height, width),
-        );
-
-        let array = ndarray::Array3::from_shape_vec((height, width, channels), output_buffer)
-            .map_err(|e| pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e)))?;
-        let py_array = PyArray3::from_owned_array(py, array);
-        py_results.push(py_array);
-    }
-
-    Ok(py_results)
+    batch_crop_images(py, images, crop_boxes)
 }
 
 #[cfg(feature = "python-bindings")]
 #[pyfunction]
-pub unsafe fn batch_center_crop_images_zero_copy<'py>(
+pub fn batch_center_crop_images_zero_copy<'py>(
     py: Python<'py>,
     images: Vec<PyReadonlyArray3<u8>>,
     target_sizes: Vec<(usize, usize)>,
 ) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
-    let batch_size = images.len();
-    if batch_size != target_sizes.len() {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            "Images and target_sizes length mismatch",
-        ));
+    for image in &images {
+        ensure_c_contiguous(&image.as_array(), "batch_center_crop_images_zero_copy")?;
     }
-
-    let mut py_results = Vec::with_capacity(batch_size);
-    let mut pool = get_buffer_pool().lock().unwrap();
-
-    for (image, &(target_width, target_height)) in images.iter().zip(target_sizes.iter()) {
-        let img_view = image.as_array();
-        ensure_c_contiguous(&img_view, "batch_center_crop_images_zero_copy")?;
-        let (src_height, src_width, channels) = img_view.dim();
-
-        let start_x = (src_width.saturating_sub(target_width)) / 2;
-        let start_y = (src_height.saturating_sub(target_height)) / 2;
-        let crop_width = target_width.min(src_width);
-        let crop_height = target_height.min(src_height);
-
-        let mut output_buffer = pool.get_buffer(crop_height, crop_width, channels);
-
-        let src_ptr = img_view.as_ptr();
-        let dst_ptr = output_buffer.as_mut_ptr();
-
-        crate::cropping::crop_raw_buffer(
-            src_ptr,
-            (src_height, src_width, channels),
-            dst_ptr,
-            (start_y, start_x, crop_height, crop_width),
-        );
-
-        let array =
-            ndarray::Array3::from_shape_vec((crop_height, crop_width, channels), output_buffer)
-                .map_err(|e| {
-                    pyo3::exceptions::PyValueError::new_err(format!("Shape error: {}", e))
-                })?;
-        let py_array = PyArray3::from_owned_array(py, array);
-        py_results.push(py_array);
-    }
-
-    Ok(py_results)
+    batch_center_crop_images(py, images, target_sizes)
 }
 
 #[cfg(feature = "python-bindings")]
@@ -306,6 +262,10 @@ pub fn batch_resize_images_zero_copy<'py>(
             let img_view = image.as_array();
             ensure_c_contiguous(&img_view, "batch_resize_images_zero_copy")?;
             let (src_height, src_width, src_channels) = img_view.dim();
+            validate_resize_shape(
+                (src_height, src_width, src_channels),
+                (target_width, target_height),
+            )?;
             let src_ptr = img_view.as_ptr();
             Ok(ResizeData {
                 src_ptr,
@@ -488,12 +448,7 @@ fn resize_single_image_direct<'py>(
     ensure_c_contiguous(&img_view, "batch_resize_images_zero_copy")?;
     let (src_height, src_width, channels) = img_view.dim();
     let (target_width, target_height) = target_size;
-
-    if channels != 3 {
-        return Err(pyo3::exceptions::PyValueError::new_err(
-            "Only 3-channel RGB images are supported",
-        ));
-    }
+    validate_resize_shape((src_height, src_width, channels), target_size)?;
 
     // Create source Mat header pointing directly to input data (zero-copy)
     let src_mat = unsafe {
@@ -697,6 +652,10 @@ pub fn batch_resize_images_iterator<'py>(
             let img_view = image.as_array();
             ensure_c_contiguous(&img_view, "batch_resize_images_iterator")?;
             let (src_height, src_width, src_channels) = img_view.dim();
+            validate_resize_shape(
+                (src_height, src_width, src_channels),
+                (target_width, target_height),
+            )?;
             let src_ptr = img_view.as_ptr();
             Ok(ResizeData {
                 src_ptr,
@@ -866,6 +825,12 @@ pub fn batch_crop_images<'py>(
     images: Vec<PyReadonlyArray3<u8>>,
     crop_boxes: Vec<(usize, usize, usize, usize)>, // (x, y, width, height)
 ) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
+    if images.len() != crop_boxes.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Images and crop_boxes length mismatch",
+        ));
+    }
+
     let mut py_results = Vec::with_capacity(images.len());
 
     for (image, &(x, y, width, height)) in images.iter().zip(crop_boxes.iter()) {
@@ -926,6 +891,12 @@ pub fn batch_random_crop_images<'py>(
     images: Vec<PyReadonlyArray3<u8>>,
     target_sizes: Vec<(usize, usize)>, // (width, height)
 ) -> PyResult<Vec<Bound<'py, PyArray3<u8>>>> {
+    if images.len() != target_sizes.len() {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Images and target_sizes length mismatch",
+        ));
+    }
+
     let mut py_results = Vec::with_capacity(images.len());
 
     for (image, &(target_width, target_height)) in images.iter().zip(target_sizes.iter()) {
@@ -954,16 +925,9 @@ pub fn batch_calculate_luminance(
     py: Python<'_>,
     images: Vec<PyReadonlyArray3<u8>>,
 ) -> PyResult<Vec<f64>> {
-    use rayon::prelude::*;
-
     let image_views: Vec<_> = images.iter().map(|image| image.as_array()).collect();
 
-    Ok(py.detach(|| {
-        image_views
-            .par_iter()
-            .map(crate::luminance::calculate_luminance_array_sequential)
-            .collect()
-    }))
+    Ok(py.detach(|| crate::luminance::batch_luminance(&image_views)))
 }
 
 // TSR FORMAT CONVERSION OPERATIONS (BENCHMARK WINNERS)
@@ -978,6 +942,12 @@ pub fn rgb_to_rgba_optimized<'py>(
     use crate::format_conversion_simd::rgb_to_rgba_optimized;
 
     let image_array = image.as_array();
+    if image_array.dim().2 != 3 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "Expected 3-channel RGB image",
+        ));
+    }
+
     let (rgba_data, metrics) = rgb_to_rgba_optimized(&image_array, alpha);
 
     let (height, width, _) = image_array.dim();

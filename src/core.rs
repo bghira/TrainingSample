@@ -174,14 +174,8 @@ pub fn batch_random_crop_image_arrays(
 // Note: resize operations now handled by OpenCV in opencv_ops.rs for optimal performance
 
 pub fn batch_calculate_luminance_arrays(images: &[Array3<u8>]) -> Vec<f64> {
-    use crate::luminance::calculate_luminance_array_sequential;
-
-    // Use parallel batch processing with sequential individual processing
-    // to avoid nested parallelism that causes performance degradation
-    images
-        .par_iter()
-        .map(|img| calculate_luminance_array_sequential(&img.view()))
-        .collect()
+    let views: Vec<_> = images.iter().map(|image| image.view()).collect();
+    crate::luminance::batch_luminance(&views)
 }
 
 // Note: resize operations (images and videos) now handled by OpenCV in opencv_ops.rs for optimal performance
