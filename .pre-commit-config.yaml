@@ -27,21 +27,21 @@ repos:
 
   # Python formatting and linting
   - repo: https://github.com/psf/black
-    rev: 25.1.0
+    rev: 26.10.1
     hooks:
       - id: black
         language_version: python3
         files: \.py$
 
   - repo: https://github.com/pycqa/isort
-    rev: 6.0.1
+    rev: 9.0.2
     hooks:
       - id: isort
         args: ["--profile", "black"]
         files: \.py$
 
   - repo: https://github.com/pycqa/flake8
-    rev: 7.3.0
+    rev: 7.5.0
     hooks:
       - id: flake8
         args: ["--max-line-length=88", "--extend-ignore=E203,W503"]
@@ -49,7 +49,7 @@ repos:
 
   # TOML formatting
   - repo: https://github.com/macisamuele/language-formatters-pre-commit-hooks
-    rev: v2.15.0
+    rev: v2.16.0
     hooks:
       - id: pretty-format-toml
         args: [--autofix]

@@ -76,7 +76,7 @@ jobs:
           echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-14" >> $GITHUB_ENV
         else
           # Ubuntu 24.04 has LLVM 18 by default
-          sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+          sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
           echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
         fi
 
@@ -164,7 +164,7 @@ jobs:
         sudo apt-get install -y clang libclang-dev llvm-dev cmake curl wget nasm yasm pkg-config
 
         # Ubuntu 24.04 has LLVM 18 by default
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
 
         LIBCLANG_PATH="/usr/lib/llvm-18/lib"

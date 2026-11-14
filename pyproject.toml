@@ -1,9 +1,9 @@
 [build-system]
 build-backend = "maturin"
-requires = ["maturin>=1.9.5,<2.0"]
+requires = ["maturin>=1.16,<2.0"]
 
 [project]
-authors = [{name = "bghira", email = "bghira@users.noreply.github.com"}]
+authors = [{ name = "bghira", email = "bghira@users.noreply.github.com" }]
 classifiers = [
   "Programming Language :: Rust",
   "Programming Language :: Python :: Implementation :: CPython",
@@ -15,13 +15,13 @@ classifiers = [
 ]
 dependencies = ["numpy>=1.21.0", "pillow>=8.0.0"]
 description = "High-performance Rust reimplementation of GIL-blocking video/image operations"
-license = {text = "MIT"}
+license = { text = "MIT" }
 name = "trainingsample"
 requires-python = ">=3.11"
 version = "0.3.2"
 
 [project.optional-dependencies]
-dev = ["pytest>=6.0", "pytest-benchmark", "maturin>=1.9.5,<2.0", "pre-commit"]
+dev = ["pytest>=9.2", "pytest-benchmark>=5.3.1", "maturin>=1.16,<2.0", "pre-commit>=4.7"]
 
 [tool.black]
 extend-exclude = '''
@@ -39,7 +39,7 @@ extend-exclude = '''
 '''
 include = '\.pyi?$'
 line-length = 88
-target-version = ['py311', 'py312', 'py313']
+target-version = ['py311', 'py312', 'py313', 'py314']
 
 [tool.isort]
 ensure_newline_before_comments = true
@@ -55,7 +55,7 @@ features = ["pyo3/extension-module", "python-bindings", "opencv", "simd"]
 module-name = "trainingsample"
 
 [tool.poetry.group.dev.dependencies]
-pytest-benchmark = "^5.1.0"
+pytest-benchmark = "^5.3.1"
 
 [tool.pytest.ini_options]
 addopts = "-ra -q --strict-markers"
@@ -64,7 +64,7 @@ markers = [
   "integration: marks tests as integration tests",
   "benchmark: marks tests as benchmarks"
 ]
-minversion = "6.0"
+minversion = "9.2"
 python_classes = ["Test*"]
 python_files = ["test_*.py", "*_test.py"]
 python_functions = ["test_*"]

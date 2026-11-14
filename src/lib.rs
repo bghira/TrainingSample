@@ -53,7 +53,9 @@ pub use crate::true_batch_ops::*;
 use pyo3::prelude::*;
 
 #[cfg(feature = "python-bindings")]
-#[pymodule]
+// Keep the GIL requirement explicit: the raw-pointer paths have not been
+// audited for free-threaded Python (PyO3 0.28+ otherwise opts in by default).
+#[pymodule(gil_used = true)]
 fn trainingsample(m: &Bound<'_, PyModule>) -> PyResult<()> {
     use crate::python_bindings::*;
 

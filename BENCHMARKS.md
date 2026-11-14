@@ -95,6 +95,12 @@ The performance file contains both benchmarks and assertions.
 Single-run `time.perf_counter` output is diagnostic. It is not a stable result
 across hosts or OpenCV builds.
 
+The large-image luminance scaling check uses deterministic inputs and validates
+results against NumPy. It compares medians from seven interleaved timing rounds,
+with five calls per batch size in each round. Its CI guard allows up to twice
+the per-image cost as batches grow; it does not require a parallel speedup on
+shared runners or across CPU cache sizes.
+
 ## Published numbers
 
 This repository does not currently store benchmark artifacts keyed by commit,

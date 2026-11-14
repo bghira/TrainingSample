@@ -13,7 +13,7 @@ env:
 jobs:
   rust-tests:
     name: Rust Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v4
@@ -22,8 +22,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Install the matching development package for LLVM 18's libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
         # Set environment variables for LLVM 18
         echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
@@ -105,7 +105,7 @@ jobs:
 
   python-tests:
     name: Python Tests
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       matrix:
         python-version: ["3.11", "3.12", "3.13", "3.14"]
@@ -117,8 +117,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Install the matching development package for LLVM 18's libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
         # Set environment variables for LLVM 18
         echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
@@ -199,7 +199,7 @@ jobs:
 
   pre-commit:
     name: Pre-commit hooks
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
 
     steps:
     - uses: actions/checkout@v4
@@ -208,8 +208,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Install the matching development package for LLVM 18's libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
         # Set environment variables for LLVM 18
         echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
@@ -278,7 +278,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-24.04, macos-latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -288,8 +288,8 @@ jobs:
       run: |
         sudo apt-get update
         sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        # Install the matching development package for LLVM 18's libclang.so symlink
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
         # Set environment variables for LLVM 18
         echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
@@ -410,7 +410,7 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential curl nasm yasm
 
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
+        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang-18-dev libclang1-18 libclang-cpp18
         echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
 
         LIBCLANG_PATH="/usr/lib/llvm-18/lib"
