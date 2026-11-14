@@ -33,6 +33,19 @@ Save machine-readable results:
   --benchmark-json benchmark.json
 ```
 
+Compare the native luminance entry points on deterministic RGB/RGBA images and
+strided views:
+
+```bash
+cargo run --release --example luminance_benchmark > luminance.csv
+```
+
+This reports median, minimum, and maximum microseconds per call over eleven
+rounds of twenty calls, after ten warmups. The RGB channel means are exactly
+127.5 for every case, so the reported luminance should also be 127.5. Run before
+and after a change on the same idle host; record the commit and CPU alongside
+the CSV. To compare the fallback build, add `--no-default-features`.
+
 ## Measured operations
 
 | Case | TrainingSample call | Reference |

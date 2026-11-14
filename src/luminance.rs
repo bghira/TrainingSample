@@ -21,6 +21,27 @@ pub fn calculate_luminance_array_sequential(image: &ArrayView3<u8>) -> f64 {
     calculate_luminance_scalar(image)
 }
 
+pub(crate) fn batch_luminance(images: &[ArrayView3<u8>]) -> Vec<f64> {
+    use rayon::prelude::*;
+
+    let pixels = images.iter().fold(0usize, |total, image| {
+        total.saturating_add(image.dim().0.saturating_mul(image.dim().1))
+    });
+    // Small batches finish faster than the cost of scheduling Rayon workers.
+    // Keep large batches parallel and leave individual kernels single-threaded.
+    if images.len() > 1 && pixels > 1024 * 1024 {
+        images
+            .par_iter()
+            .map(calculate_luminance_array_sequential)
+            .collect()
+    } else {
+        images
+            .iter()
+            .map(calculate_luminance_array_sequential)
+            .collect()
+    }
+}
+
 fn calculate_luminance_contiguous(image: &ArrayView3<u8>) -> Option<f64> {
     let (height, width, channels) = image.dim();
     let data = image.as_slice()?;
@@ -34,18 +55,73 @@ fn calculate_luminance_contiguous(image: &ArrayView3<u8>) -> Option<f64> {
         return Some(sum as f64 / data.len() as f64);
     }
 
-    let pixel_count = height * width;
-    let mut r_sum = 0u64;
-    let mut g_sum = 0u64;
-    let mut b_sum = 0u64;
+    let sums = sum_channels(data, channels);
+    Some(weighted_average(sums, height * width))
+}
 
-    for pixel in data.chunks_exact(channels).take(pixel_count) {
-        r_sum += pixel[0] as u64;
-        g_sum += pixel[1] as u64;
-        b_sum += pixel[2] as u64;
+fn weighted_average(sums: [u64; 3], pixels: usize) -> f64 {
+    (0.299 * sums[0] as f64 + 0.587 * sums[1] as f64 + 0.114 * sums[2] as f64) / pixels as f64
+}
+
+fn sum_channels(data: &[u8], channels: usize) -> [u64; 3] {
+    #[cfg(all(feature = "simd", target_arch = "aarch64"))]
+    if matches!(channels, 3 | 4) && std::arch::is_aarch64_feature_detected!("neon") {
+        // Every load is bounded by an exact chunk of interleaved pixels.
+        return unsafe { sum_channels_neon(data, channels) };
     }
+    // Fixed chunk sizes allow the compiler to vectorize RGB and RGBA separately.
+    match channels {
+        3 => sum_channel_chunks::<3>(data),
+        4 => sum_channel_chunks::<4>(data),
+        _ => {
+            let mut sums = [0u64; 3];
+            for pixel in data.chunks_exact(channels) {
+                for c in 0..3 {
+                    sums[c] += pixel[c] as u64;
+                }
+            }
+            sums
+        }
+    }
+}
 
-    Some((0.299 * r_sum as f64 + 0.587 * g_sum as f64 + 0.114 * b_sum as f64) / pixel_count as f64)
+fn sum_channel_chunks<const CHANNELS: usize>(data: &[u8]) -> [u64; 3] {
+    let mut sums = [0u64; 3];
+    for pixel in data.chunks_exact(CHANNELS) {
+        sums[0] += pixel[0] as u64;
+        sums[1] += pixel[1] as u64;
+        sums[2] += pixel[2] as u64;
+    }
+    sums
+}
+
+#[cfg(all(feature = "simd", target_arch = "aarch64"))]
+#[target_feature(enable = "neon")]
+unsafe fn sum_channels_neon(data: &[u8], channels: usize) -> [u64; 3] {
+    use std::arch::aarch64::*;
+    let mut sums = [0u64; 3];
+    let mut chunks = data.chunks_exact(16 * channels);
+    if channels == 3 {
+        for chunk in &mut chunks {
+            let rgb = vld3q_u8(chunk.as_ptr());
+            sums[0] += vaddlvq_u8(rgb.0) as u64;
+            sums[1] += vaddlvq_u8(rgb.1) as u64;
+            sums[2] += vaddlvq_u8(rgb.2) as u64;
+        }
+    } else {
+        for chunk in &mut chunks {
+            let rgba = vld4q_u8(chunk.as_ptr());
+            sums[0] += vaddlvq_u8(rgba.0) as u64;
+            sums[1] += vaddlvq_u8(rgba.1) as u64;
+            sums[2] += vaddlvq_u8(rgba.2) as u64;
+        }
+    }
+    for pixel in chunks.remainder().chunks_exact(channels) {
+        for c in 0..3 {
+            sums[c] += pixel[c] as u64;
+        }
+    }
+    sums
 }
 
 /// Ultra-fast adaptive luminance calculation with automatic SIMD/scalar selection
@@ -264,29 +340,22 @@ pub fn calculate_luminance_with_metrics(image: &ArrayView3<u8>) -> (f64, Luminan
 /// Scalar implementation (fallback)
 pub fn calculate_luminance_scalar(image: &ArrayView3<u8>) -> f64 {
     let (height, width, channels) = image.dim();
-
-    if channels < 3 {
-        // Grayscale or single channel - just average the values
-        let sum: u64 = image.iter().map(|&x| x as u64).sum();
-        return sum as f64 / (height * width * channels) as f64;
+    if image.is_empty() {
+        return 0.0;
     }
-
-    let mut total_luminance = 0.0;
-    let pixel_count = height * width;
-
-    for h in 0..height {
-        for w in 0..width {
-            let r = image[[h, w, 0]] as f64;
-            let g = image[[h, w, 1]] as f64;
-            let b = image[[h, w, 2]] as f64;
-
-            // Standard RGB to luminance conversion
-            let luminance = 0.299 * r + 0.587 * g + 0.114 * b;
-            total_luminance += luminance;
+    if channels < 3 {
+        let sum: u64 = image.iter().map(|&x| x as u64).sum();
+        return sum as f64 / image.len() as f64;
+    }
+    let mut sums = [0u64; 3];
+    for y in 0..height {
+        for x in 0..width {
+            sums[0] += image[[y, x, 0]] as u64;
+            sums[1] += image[[y, x, 1]] as u64;
+            sums[2] += image[[y, x, 2]] as u64;
         }
     }
-
-    total_luminance / pixel_count as f64
+    weighted_average(sums, height * width)
 }
 
 #[cfg(not(feature = "simd"))]
