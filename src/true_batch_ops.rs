@@ -41,12 +41,13 @@ impl TrueBatchProcessor {
         target_sizes: &[(u32, u32)],
         interpolation: crate::cv_compat::ResizeInterpolation,
     ) -> Result<Vec<Array3<u8>>> {
-        if images.is_empty() {
-            return Ok(Vec::new());
-        }
-
         if images.len() != target_sizes.len() {
             anyhow::bail!("Images and target sizes length mismatch");
+        }
+        for &(width, height) in target_sizes {
+            if width == 0 || height == 0 || width > i32::MAX as u32 || height > i32::MAX as u32 {
+                anyhow::bail!("Target dimensions must be positive and fit OpenCV's i32 range");
+            }
         }
 
         let interpolation_flag = match interpolation {
@@ -56,10 +57,15 @@ impl TrueBatchProcessor {
             crate::cv_compat::ResizeInterpolation::InterLanczos4 => INTER_LANCZOS4,
         };
 
+        // Retain normalized storage until OpenCV has finished reading every Mat.
+        let images: Vec<_> = images
+            .iter()
+            .map(|image| image.as_standard_layout())
+            .collect();
         // Convert all images to OpenCV Mats ONCE - eliminate repeated conversions!
         let mut src_mats: Vec<Mat> = Vec::with_capacity(images.len());
-        for image in images {
-            let src_mat = self.ndarray_to_mat(image)?;
+        for image in &images {
+            let src_mat = self.ndarray_to_mat(&image.view(), 3)?;
             src_mats.push(src_mat);
         }
 
@@ -99,19 +105,31 @@ impl TrueBatchProcessor {
 
     /// Create Mat header pointing directly to ndarray memory - ZERO COPY!
     #[cfg(feature = "opencv")]
-    fn ndarray_to_mat(&self, image: &ArrayView3<u8>) -> Result<Mat> {
+    fn ndarray_to_mat(&self, image: &ArrayView3<u8>, expected_channels: usize) -> Result<Mat> {
         let (height, width, channels) = image.dim();
-        if channels != 3 {
-            anyhow::bail!("Only 3-channel RGB images are supported");
+        if channels != expected_channels {
+            anyhow::bail!("Expected {}-channel image", expected_channels);
         }
+        if height == 0 || width == 0 {
+            anyhow::bail!("Image dimensions must be greater than zero");
+        }
+        let rows = i32::try_from(height)?;
+        let cols = i32::try_from(width)?;
+        let data = image
+            .as_slice()
+            .ok_or_else(|| anyhow::anyhow!("Image must be contiguous"))?;
 
-        // ZERO-COPY: Create Mat header that points directly to ndarray memory
+        // Callers retain the contiguous source storage until all Mats are dropped.
         let mat = unsafe {
             Mat::new_rows_cols_with_data_unsafe(
-                height as i32,
-                width as i32,
-                opencv::core::CV_8UC3,
-                image.as_ptr() as *mut std::ffi::c_void,
+                rows,
+                cols,
+                if channels == 1 {
+                    opencv::core::CV_8UC1
+                } else {
+                    opencv::core::CV_8UC3
+                },
+                data.as_ptr() as *mut std::ffi::c_void,
                 opencv::core::Mat_AUTO_STEP,
             )?
         };
@@ -152,6 +170,9 @@ impl TrueBatchProcessor {
         target_sizes: &[(u32, u32)],
         interpolation: crate::cv_compat::ResizeInterpolation,
     ) -> Result<Vec<Array3<u8>>> {
+        if images.len() != target_sizes.len() {
+            anyhow::bail!("Images and target sizes length mismatch");
+        }
         // Fallback to individual resizes without OpenCV
         let mut results = Vec::with_capacity(images.len());
         for (image, &size) in images.iter().zip(target_sizes.iter()) {
@@ -189,32 +210,22 @@ impl TrueBatchProcessor {
             anyhow::bail!("Luminance calculation requires 3-channel image");
         }
 
-        unsafe {
-            let src_ptr = image.as_ptr();
-            let mut total_luminance = 0u64;
-            let mut sample_count = 0u32;
-
-            // Sample every stride pixels for memory efficiency
-            for y in (0..height).step_by(stride) {
-                for x in (0..width).step_by(stride) {
-                    let pixel_offset = (y * width + x) * 3;
-                    let r = *src_ptr.add(pixel_offset) as u32;
-                    let g = *src_ptr.add(pixel_offset + 1) as u32;
-                    let b = *src_ptr.add(pixel_offset + 2) as u32;
-
-                    // Use ITU-R BT.709 luminance coefficients (more accurate than simple average)
-                    let luminance = (299 * r + 587 * g + 114 * b) / 1000;
-                    total_luminance += luminance as u64;
-                    sample_count += 1;
-                }
-            }
-
-            if sample_count > 0 {
-                Ok((total_luminance / sample_count as u64) as f32)
-            } else {
-                Ok(0.0)
+        let mut total_luminance = 0u64;
+        let mut sample_count = 0u64;
+        for y in (0..height).step_by(stride) {
+            for x in (0..width).step_by(stride) {
+                let r = image[[y, x, 0]] as u32;
+                let g = image[[y, x, 1]] as u32;
+                let b = image[[y, x, 2]] as u32;
+                total_luminance += ((299 * r + 587 * g + 114 * b) / 1000) as u64;
+                sample_count += 1;
             }
         }
+        Ok(if sample_count > 0 {
+            (total_luminance / sample_count) as f32
+        } else {
+            0.0
+        })
     }
 
     /// TRUE batch color conversion using OpenCV with zero-copy approach
@@ -228,32 +239,44 @@ impl TrueBatchProcessor {
             return Ok(Vec::new());
         }
 
-        use opencv::imgproc::{cvt_color, COLOR_BGR2RGB, COLOR_RGB2BGR, COLOR_RGB2GRAY};
+        use opencv::imgproc::{
+            cvt_color, COLOR_BGR2RGB, COLOR_GRAY2RGB, COLOR_RGB2BGR, COLOR_RGB2GRAY,
+        };
 
         let opencv_code = match conversion {
             ColorConversion::BgrToRgb => COLOR_BGR2RGB,
             ColorConversion::RgbToBgr => COLOR_RGB2BGR,
             ColorConversion::RgbToGray => COLOR_RGB2GRAY,
-            _ => anyhow::bail!("Unsupported color conversion: {:?}", conversion),
+            ColorConversion::GrayToRgb => COLOR_GRAY2RGB,
         };
 
+        let expected_channels = if matches!(conversion, ColorConversion::GrayToRgb) {
+            1
+        } else {
+            3
+        };
+        // Retain normalized storage for the lifetime of the Mat headers.
+        let images: Vec<_> = images
+            .iter()
+            .map(|image| image.as_standard_layout())
+            .collect();
         // Convert all images to OpenCV Mats ONCE - zero copy!
         let mut src_mats: Vec<Mat> = Vec::with_capacity(images.len());
-        for image in images {
-            let src_mat = self.ndarray_to_mat(image)?;
+        for image in &images {
+            let src_mat = self.ndarray_to_mat(&image.view(), expected_channels)?;
             src_mats.push(src_mat);
         }
 
         // Pre-allocate output ndarrays and create Mat headers - ULTIMATE ZERO COPY!
         let mut results: Vec<Array3<u8>> = Vec::with_capacity(images.len());
         for (i, image) in images.iter().enumerate() {
-            let (height, width, channels) = image.dim();
+            let (height, width, _) = image.dim();
 
-            // For RGB->GRAY, output is 1 channel; otherwise same channels
+            // RGB->GRAY outputs one channel; all other conversions output RGB.
             let output_channels = if matches!(conversion, ColorConversion::RgbToGray) {
                 1
             } else {
-                channels
+                3
             };
             let mut result = Array3::<u8>::zeros((height, width, output_channels));
 
@@ -374,6 +397,7 @@ impl TrueBatchProcessor {
 
         let mut result = Array3::<u8>::zeros((height, width, 1));
 
+        let image = image.as_standard_layout();
         unsafe {
             let src_ptr = image.as_ptr();
             let dst_ptr = result.as_mut_ptr();
@@ -396,10 +420,16 @@ impl TrueBatchProcessor {
     #[allow(dead_code)]
     fn fallback_conversion(
         &self,
-        _image: &ArrayView3<u8>,
+        image: &ArrayView3<u8>,
         conversion: ColorConversion,
     ) -> Result<Array3<u8>> {
-        anyhow::bail!("Conversion not implemented: {:?}", conversion)
+        match conversion {
+            ColorConversion::GrayToRgb => crate::cv_compat::cvt_color(
+                image,
+                crate::cv_compat::ColorConversionCode::ColorGray2Rgb,
+            ),
+            _ => anyhow::bail!("Conversion not implemented: {:?}", conversion),
+        }
     }
 }
 
