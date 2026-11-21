@@ -21,6 +21,12 @@ class TestBatchRegressions:
         )
         np.testing.assert_array_equal(actual, expected)
 
+    @pytest.mark.parametrize("width", [0, 1, 7, 8, 9, 15, 16, 17])
+    def test_remove_alpha_preserves_rgb_and_tail(self, width):
+        rgba = np.arange(width * 4, dtype=np.uint8).reshape(1, width, 4)
+        rgb, _ = tsr.rgba_to_rgb_optimized(rgba)
+        np.testing.assert_array_equal(rgb, rgba[:, :, :3])
+
     @pytest.mark.parametrize(
         "layout", ["stepped", "reversed", "transposed", "broadcast"]
     )
