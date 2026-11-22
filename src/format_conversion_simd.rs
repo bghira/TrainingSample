@@ -32,6 +32,11 @@ impl FormatConversionMetrics {
     }
 }
 
+// Preserve the public metric for the portable SIMD path. LLVM selects the
+// hardware vector width when it vectorizes the pixel loop.
+#[cfg(feature = "simd")]
+const REPORTED_SIMD_WIDTH: usize = 8;
+
 /// SIMD-optimized RGB to RGBA conversion using portable SIMD
 #[cfg(feature = "simd")]
 pub fn rgb_to_rgba_simd(
@@ -47,29 +52,21 @@ pub fn rgb_to_rgba_simd(
 
     let total_pixels = height * width;
     let image = image.as_standard_layout();
-    let mut rgba_data = vec![alpha_value; total_pixels * 4];
-    const SIMD_WIDTH: usize = 8;
-
-    // Keep every output byte initialized, including tails shorter than eight
-    // pixels. Mixing writes to spare capacity with Vec::push overwrites earlier
-    // pixels and can move subsequent writes beyond the allocation.
-    for (rgb_chunk, rgba_chunk) in image
-        .as_slice()
-        .unwrap()
-        .chunks(SIMD_WIDTH * 3)
-        .zip(rgba_data.chunks_mut(SIMD_WIDTH * 4))
-    {
-        for (rgb, rgba) in rgb_chunk
-            .chunks_exact(3)
-            .zip(rgba_chunk.chunks_exact_mut(4))
-        {
-            rgba[..3].copy_from_slice(rgb);
-        }
+    // Fixed-size pixel arrays let LLVM vectorize a single pass over the image.
+    let mut rgba_pixels = vec![[0; 4]; total_pixels];
+    let (rgb_pixels, _) = image.as_slice().unwrap().as_chunks::<3>();
+    for (&[r, g, b], dst) in rgb_pixels.iter().zip(&mut rgba_pixels) {
+        *dst = [r, g, b, alpha_value];
     }
+    let rgba_data = rgba_pixels.into_flattened();
 
     let elapsed = start.elapsed().as_nanos() as u64;
-    let metrics =
-        FormatConversionMetrics::new(total_pixels, elapsed, SIMD_WIDTH, "simd_rgb_to_rgba");
+    let metrics = FormatConversionMetrics::new(
+        total_pixels,
+        elapsed,
+        REPORTED_SIMD_WIDTH,
+        "simd_rgb_to_rgba",
+    );
 
     (rgba_data, metrics)
 }
@@ -88,49 +85,20 @@ pub fn rgba_to_rgb_simd(
         panic!("RGBA data size mismatch");
     }
 
-    let mut rgb_data = Vec::with_capacity(total_pixels * 3);
-
-    // SIMD processing for RGBA → RGB conversion
-    const SIMD_WIDTH: usize = 8;
-    let chunks = total_pixels / SIMD_WIDTH;
-
-    // Process in chunks of 8 pixels (32 RGBA bytes → 24 RGB bytes)
-    for chunk in 0..chunks {
-        let rgba_offset = chunk * SIMD_WIDTH * 4;
-        let rgb_offset = chunk * SIMD_WIDTH * 3;
-
-        let rgba_chunk = &rgba_data[rgba_offset..rgba_offset + 32];
-
-        // Reserve space in RGB output
-        rgb_data.resize(rgb_data.len() + 24, 0);
-        let rgb_slice = &mut rgb_data[rgb_offset..rgb_offset + 24];
-
-        // Extract RGB from RGBA using SIMD shuffle
-        for i in 0..SIMD_WIDTH {
-            rgb_slice[i * 3] = rgba_chunk[i * 4]; // R
-            rgb_slice[i * 3 + 1] = rgba_chunk[i * 4 + 1]; // G
-            rgb_slice[i * 3 + 2] = rgba_chunk[i * 4 + 2]; // B
-                                                          // Skip alpha channel
-        }
+    let mut rgb_pixels = vec![[0; 3]; total_pixels];
+    let (rgba_pixels, _) = rgba_data.as_chunks::<4>();
+    for (&[r, g, b, _], dst) in rgba_pixels.iter().zip(&mut rgb_pixels) {
+        *dst = [r, g, b];
     }
-
-    // Handle remaining pixels
-    let remaining = total_pixels % SIMD_WIDTH;
-    let remaining_offset = chunks * SIMD_WIDTH;
-
-    for i in 0..remaining {
-        let pixel_idx = remaining_offset + i;
-        let rgba_idx = pixel_idx * 4;
-
-        rgb_data.push(rgba_data[rgba_idx]); // R
-        rgb_data.push(rgba_data[rgba_idx + 1]); // G
-        rgb_data.push(rgba_data[rgba_idx + 2]); // B
-                                                // Skip alpha
-    }
+    let rgb_data = rgb_pixels.into_flattened();
 
     let elapsed = start.elapsed().as_nanos() as u64;
-    let metrics =
-        FormatConversionMetrics::new(total_pixels, elapsed, SIMD_WIDTH, "simd_rgba_to_rgb");
+    let metrics = FormatConversionMetrics::new(
+        total_pixels,
+        elapsed,
+        REPORTED_SIMD_WIDTH,
+        "simd_rgba_to_rgb",
+    );
 
     (rgb_data, metrics)
 }
